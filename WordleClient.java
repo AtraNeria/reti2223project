@@ -1,7 +1,7 @@
 import java.net.*;
 import java.io.*;
 
-public class wordleClientMain {
+public class WordleClient {
 	
 	// Interagisce con l'utente tramite terminale di sistema
 	public Console c;
@@ -14,7 +14,7 @@ public class wordleClientMain {
 	private BufferedReader fromServer;
 	
 	// Metodo costruttore
-	public wordleClientMain() throws Exception {
+	public WordleClient() throws Exception {
 		c = System.console();
 		clientSocket = new Socket(host.getHostName(),port);	//TO-DO: exception
 		toServer = new PrintStream(clientSocket.getOutputStream());
@@ -38,11 +38,11 @@ public class wordleClientMain {
 	public void getSignup() {
 		String name = c.readLine("Username: ");
 		char[] password = c.readPassword("Password: ");
-		// TO-DO send to server and getanswer
+		// TO-DO with RMI
 	}
 	
 	public static void main (String[] args) throws Exception {
-		wordleClientMain client = new wordleClientMain();
+		WordleClient client = new WordleClient();
 		if (client.greet()) client.getLogin();
 		else client.getSignup();
 	}
