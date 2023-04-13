@@ -12,7 +12,6 @@ import java.nio.file.Files;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -23,8 +22,6 @@ public class WordleServer {
 	private long wordLapse;
 	private ServerSocketChannel welcomeSocket;
 	// HashMap: username=key; il valore ha campi password e score
-	private ConcurrentHashMap usersDB = new ConcurrentHashMap <String,UserEntry>();
-
 
 	public WordleServer() {
 		// Ottiene le info per configurare il server dal file apposito
@@ -102,7 +99,6 @@ public class WordleServer {
 		client.configureBlocking(false);
 		client.register(selector, SelectionKey.OP_READ);
 	}
-
 
 	// Classe interna: task per i thread
 	private class WordleTask implements Runnable {

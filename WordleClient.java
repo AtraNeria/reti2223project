@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import javax.management.remote.rmi.RMIServer;
 import java.io.*;
 
 public class WordleClient {
@@ -46,9 +47,16 @@ public class WordleClient {
 	}
 	
 	// Chiede all'utente se desidera accedere o registrarsi                                                        
-	public boolean greet() {
-		String ans = c.readLine("Ciao! Se desideri effettuare il login scrivi YES.\nSe non hai un account e desideri registrarti, scrivi NO");
-		return (Boolean.parseBoolean(ans));
+	public void greet() {
+		boolean exit = false;
+		while (!exit ){
+			String ans = c.readLine("Ciao! Se desideri effettuare il login scrivi YES.\nSe non hai un account e desideri registrarti, scrivi NO");
+			if (Boolean.parseBoolean(ans)) exit = getLogin();
+			else {
+				exit = getSignup();
+				if (!exit) System.out.println("Username già in utilizzo");
+			}
+		}
 	}
 	
 	// Chiede username e password e controlla che siano corrette, altrimenti segnala errore
@@ -75,8 +83,17 @@ public class WordleClient {
 	public boolean getSignup() {
 		String name = c.readLine("Username: ");
 		char[] password = c.readPassword("Password: ");
-		// TO-DO with RMI
-		return true;
+		boolean exit = false;
+		try {
+			//Connetto al server remoto
+			RemoteWordleServer remoteServer = (RemoteWordleServer) java.rmi.Naming.lookup("RemoteWordleService");
+			//Richiedo servizio remoto
+			exit = remoteServer.signUp(name, password);
+		}
+		catch (Exception e) {
+			e.printStackTrace();
+		}
+		return exit;
 	}
 	
 }
