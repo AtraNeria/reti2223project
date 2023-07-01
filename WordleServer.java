@@ -111,7 +111,7 @@ public class WordleServer {
 			// Switch per controllare quale operazione deve essere eseguita
 			switch (op) {
 				case 0:
-					// TO-DO: Login
+					// TO-DO: Show
 					break;
 				case 1:
 					//TO-DO: Play
@@ -124,9 +124,6 @@ public class WordleServer {
 					break;
 				case 4:
 					//TO-DO: Share
-					break;
-				case 5:
-					//TO-DO: Show
 					break;
 			}
 	
