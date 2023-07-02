@@ -5,6 +5,7 @@ import com.google.gson.*;
 import com.google.gson.reflect.TypeToken;
 
 import java.io.BufferedWriter;
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
@@ -26,9 +27,13 @@ public class RemoteWordleServer extends java.rmi.server.UnicastRemoteObject impl
 		Gson gson = new Gson();
 		TypeToken<ConcurrentHashMap<String, UserEntry>> dbType = new TypeToken<ConcurrentHashMap<String, UserEntry>>(){};
 		Path dbFilePath = FileSystems.getDefault().getPath("users.json");
+		File f = new File("users.json");
 		try {
-			String jsonS = Files.readString(dbFilePath);
-			usersDB = gson.fromJson(jsonS, dbType);
+			// Se esiste già un database
+			if (f.exists()){
+				String jsonS = Files.readString(dbFilePath);
+				usersDB = gson.fromJson(jsonS, dbType);
+			}
 		}
 		catch(IOException e) {e.printStackTrace();}
 	}
@@ -42,7 +47,7 @@ public class RemoteWordleServer extends java.rmi.server.UnicastRemoteObject impl
 	}
 
 	// Returns: 0-login avvenuto; 1-password errata; 2-utente non trovato
-	public int login(String username, char[] password) {
+	public int login(String username, char[] password) throws RemoteException {
 		int ex = 0;
 		UserEntry loginAttempt = usersDB.get(username);
 		if (loginAttempt==null) ex = 2;

@@ -1,7 +1,7 @@
 import java.io.IOException;
-import java.net.MalformedURLException;
-import java.rmi.Naming;
-import java.rmi.RemoteException;
+import java.rmi.AlreadyBoundException;
+import java.rmi.registry.LocateRegistry;
+import java.rmi.registry.Registry;
 import java.rmi.server.*;
 
 public class ServerMain {
@@ -12,10 +12,10 @@ public class ServerMain {
         // Creo server per servizi da remoto
         try {
             RemoteWordleServer rws = new RemoteWordleServer();
-            // TO-DO well-formed URL?
-            Naming.rebind("RemoteWordleService", rws);
+            Registry reg = LocateRegistry.createRegistry(2020);
+            reg.bind("RemoteWordleService", rws);
         }
-        catch (RemoteException | MalformedURLException e) {
+        catch (IOException | AlreadyBoundException e) {
             e.printStackTrace();
         }
         // Avvio server

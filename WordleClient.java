@@ -4,6 +4,8 @@ import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.rmi.registry.LocateRegistry;
+import java.rmi.registry.Registry;
 import java.util.List;
 import javax.management.remote.rmi.RMIServer;
 import java.io.*;
@@ -52,12 +54,25 @@ public class WordleClient {
 	// Chiede all'utente se desidera accedere o registrarsi                                                        
 	public void greet() {
 		boolean exit = false;
+		int op;
 		while (!exit ){
-			String ans = c.readLine("Ciao! Se desideri effettuare il login scrivi YES.\nSe non hai un account e desideri registrarti, scrivi NO");
-			if (Boolean.parseBoolean(ans)) exit = getLogin();
-			else {
-				exit = getSignup();
-				if (!exit) System.out.println("Username già in utilizzo");
+			String ans = c.readLine("Ciao! Scrivi:\n1 -Login\n2 -Signup\n3 -Play\n4 -Exit\n");
+			op = Integer.parseInt(ans);
+			switch (op) {
+				case 1:
+					getLogin();
+					if (login) System.out.print("Connesso con successo!\n");
+					break;
+				case 2:
+					getSignup();
+					if (login) System.out.print("Registrato con successo! Sei ancora connesso!\n");
+					break;
+				case 3:
+					//TO-DO: Play
+					break;
+				case 4:
+					exit = true;
+					break;
 			}
 		}
 	}
@@ -84,7 +99,8 @@ public class WordleClient {
 		try {
 			int rc;
 			//connetto al server remoto
-			RemoteWordleServer remoteServer = (RemoteWordleServer) java.rmi.Naming.lookup("RemoteWordleService");
+            Registry reg = LocateRegistry.getRegistry(2020);
+			RemoteServerInterface remoteServer = (RemoteServerInterface) reg.lookup("RemoteWordleService");
 			rc = remoteServer.login(name, password);
 			switch (rc) {
 				case 0:
@@ -110,23 +126,26 @@ public class WordleClient {
 	public boolean getSignup() {
 		String name = c.readLine("Username: ");
 		char[] password = c.readPassword("Password: ");
-		boolean exit = false;
+		boolean exit = true;
 		// Controllo lunghezza nome
 		if (name.length()> 12) {
 			System.out.println("Username troppo lungo! Deve essere massimo 12 caratteri.");
-			return false;
+			exit = false;
 		}
 		// Controllo lunghezza password
 		if (password.length > 24) {
 			System.out.println("Password troppo lunga! Deve essere massimo 24 caratteri.");
-			return false;
+			exit = false;
 		}
 		
 		try {
-			//Connetto al server remoto
-			RemoteWordleServer remoteServer = (RemoteWordleServer) java.rmi.Naming.lookup("RemoteWordleService");
-			//Richiedo servizio remoto
+			// Connetto al server remoto
+			Registry reg = LocateRegistry.getRegistry(2020);
+			RemoteServerInterface remoteServer = (RemoteServerInterface) reg.lookup("RemoteWordleService");
 			exit = remoteServer.signUp(name, password);
+			if (!exit) System.out.println("Username già in utilizzo\n");
+			// Se mi registro con successo rimango collegato
+			else login = true;
 		}
 		catch (Exception e) {
 			e.printStackTrace();

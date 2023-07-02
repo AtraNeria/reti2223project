@@ -41,7 +41,7 @@ public class WordleServer {
 			// il numero massimo di thread
 			maxThreads = Integer.parseInt(param.get(1));
 			// ogni quanto cambiare parola in millisecondi
-			wordLapse = TimeUnit.HOURS.toMillis(Long.parseLong(param.get(2)));
+			wordLapse = TimeUnit.HOURS.toMillis(Long.parseLong(param.get(1)));
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
