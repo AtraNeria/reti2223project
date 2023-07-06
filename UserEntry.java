@@ -14,7 +14,6 @@ public class UserEntry {
 
     // Metodo per aumentare il punteggio di un utente
     public void ScoreIncrease(int plus) {
-        // TO-DO: check if plus >= 0
-        score = score + plus;
+        if (score >= 0) score = score + plus;
     }
 }

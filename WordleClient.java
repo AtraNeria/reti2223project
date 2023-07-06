@@ -1,6 +1,7 @@
 import java.net.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -8,6 +9,8 @@ import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.util.List;
 import javax.management.remote.rmi.RMIServer;
+
+import java.beans.Encoder;
 import java.io.*;
 
 public class WordleClient {
@@ -20,7 +23,7 @@ public class WordleClient {
 	private InetSocketAddress host;
 	// Due stream per comunicare con server
 	private ByteBuffer out;
-	private BufferedReader in;
+	private ByteBuffer in;
 	private boolean login;
 	
 	// Metodo costruttore
@@ -30,14 +33,13 @@ public class WordleClient {
 		// Configurazione per numero di porta
 		this.getConfig();
 		host = new InetSocketAddress("localhost", port);
+		System.out.println(host);	// TEST
 		// login non ancora effettuato
 		login = false;
-		// Avvio della socket
-		clientSocket = SocketChannel.open(host);
 	}
 
 	// Configurazione
-	public void getConfig() {
+	private void getConfig() {
 		// ricavo il path del file di configurazione
 		Path configFile = Paths.get("clientConfig.txt");
 		// estraggo le linee del file
@@ -56,7 +58,7 @@ public class WordleClient {
 		boolean exit = false;
 		int op;
 		while (!exit ){
-			String ans = c.readLine("Ciao! Scrivi:\n1 -Login\n2 -Signup\n3 -Play\n4 -Exit\n");
+			String ans = c.readLine("Ciao! Scrivi:\n1 -Login\n2 -Signup\n3 -Play\n4 -Condividi score\n5 -Mostrami statistiche degli altri utenti\n6 -Logout\n");
 			op = Integer.parseInt(ans);
 			switch (op) {
 				case 1:
@@ -68,10 +70,21 @@ public class WordleClient {
 					if (login) System.out.print("Registrato con successo! Sei ancora connesso!\n");
 					break;
 				case 3:
-					//TO-DO: Play
+					if (login) play();
+					else System.out.print("Accedi o registrati prima di giocare!");
 					break;
 				case 4:
+					// TO-DO: share
+					break;
+				case 5:
+					// TO-DO: show me stats
+					break;
+				case 6:
+					login = false;
 					exit = true;
+					break;
+				default:
+					System.out.print("Richiesta non supportata!");
 					break;
 			}
 		}
@@ -79,7 +92,7 @@ public class WordleClient {
 	
 	// Chiede username e password e controlla che siano corrette, altrimenti segnala errore
 	// Restituisce true se l'operazione ha avuto successo, false altrimenti
-	public boolean getLogin() {
+	private boolean getLogin() {
 		// Leggo Username
 		String name = c.readLine("Username: ");
 		//Massimo 12 char
@@ -123,7 +136,7 @@ public class WordleClient {
 	
 	// Chiede credenziale con cui registrarsi
 	// Restituisce true se l'operazione ha avuto successo, false altrimenti
-	public boolean getSignup() {
+	private boolean getSignup() {
 		String name = c.readLine("Username: ");
 		char[] password = c.readPassword("Password: ");
 		boolean exit = true;
@@ -153,4 +166,86 @@ public class WordleClient {
 		return exit;
 	}
 	
+	// Avvia una partita di wordle
+	private void play() {
+		try {
+			// Avvio della socket
+			clientSocket = SocketChannel.open(host);
+		}
+		catch (IOException e) {
+			System.err.println("Impossibile connettersi");
+		}
+
+		// 12 tentativi
+		int chances = 12;
+		boolean won = false;
+		int outcome;
+		while (chances!=0 && !won) {
+			String guess = c.readLine("Prova a indovinare\n");
+			// La parola deve essere di 10 lettere
+			if (guess.length()!=10) {
+				System.out.println("La parola deve essere di 10 lettere!");
+				continue;
+			}
+			outcome = sendWord(guess);
+			switch (outcome) {
+				// Errata
+				case 0:
+					chances--;
+					System.out.println("Hai ancora "+(chances)+" tentativi!");
+					break;
+				// Corretta
+				case 1:
+					won=true;
+					System.out.println("Hai indovinato in "+(12-chances)+" tentativi!");
+					break;
+				// Non nel vocabolario
+				case 2:
+					System.out.println("Parola non nel vocabolario; non ti verranno sottratti tentativi!");
+					break;
+				// Problemi a raggiungere il server
+				case 3:
+					chances = 0;
+					System.out.println("Server non raggiungibile!");
+					break;
+			}
+		}
+		// TO-DO
+		//if (won) updateScore(); sendMeStats();
+	}
+
+	// Invia un tentativo al server
+	// Restituisce 0 in caso di errore, 1 in caso di successo, 
+	// 2 se la parola non è contemplata, 3 in caso di problemi col server
+	private int sendWord(String guess) {
+		int outcome = 0;
+		// Guess nel buffer di output
+		try {
+			// Scrivo richiesta di gioco al server
+			out = ByteBuffer.allocate(32);
+			out.putInt(1);
+			out.flip();
+			clientSocket.write(out);
+			// Controllo server ack
+			in = ByteBuffer.allocate(32);
+			clientSocket.read(in);
+			in.flip();
+			int ack = in.getInt();
+			// Resetto buffer
+			in.clear();
+			out.clear();
+			// Se server ha accettato richiesta
+			if (ack==0){
+				// Scrivo guess al server
+				out = ByteBuffer.wrap(guess.getBytes());
+				clientSocket.write(out);
+			}
+			// Se il server non è raggiungibile
+			else {outcome = 3;}
+		}
+		catch (IOException e) {
+			e.printStackTrace();
+		}
+		return outcome;
+	}
 }

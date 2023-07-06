@@ -14,15 +14,10 @@ public class ServerMain {
             RemoteWordleServer rws = new RemoteWordleServer();
             Registry reg = LocateRegistry.createRegistry(2020);
             reg.bind("RemoteWordleService", rws);
+            // Avvio server
+            server.startServer();
         }
         catch (IOException | AlreadyBoundException e) {
-            e.printStackTrace();
-        }
-        // Avvio server
-        try {
-            server.startServer();
-        } catch (IOException e) {
-            // TO-DO Auto-generated catch block
             e.printStackTrace();
         }
     }
