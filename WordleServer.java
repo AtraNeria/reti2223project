@@ -2,6 +2,7 @@ import java.net.*;
 import java.io.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.sql.Timestamp;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
@@ -49,8 +50,7 @@ public class WordleServer {
 			// se sono specificate anche parola e tempo di estrazione di questa
 			if (param.size()>3) {
 				word = param.get(3);
-				wordExtraction = new Timestamp(TimeUnit.HOURS.toMillis(Long.parseLong(param.get(2))));
-				// TO-DO: when close server write current word and wordExtraction at the end of config
+				wordExtraction = new Timestamp(TimeUnit.HOURS.toMillis(Long.parseLong(param.get(4))));
 			}
 			else extractWord();
 		} catch (IOException e) {
@@ -61,6 +61,9 @@ public class WordleServer {
 	// Avvio il server, che entra in ascolto
 	public void startServer() throws IOException {
 
+		// Crep shutdown hook
+		Thread sdHook = new Thread(()-> closeServer());
+		Runtime.getRuntime().addShutdownHook(sdHook);
 		// Creo la socket di ascolto passiva e la collego
 		welcomeSocket = ServerSocketChannel.open();
 		InetSocketAddress addr = new InetSocketAddress("localhost", port); // TEST
@@ -139,6 +142,29 @@ public class WordleServer {
 			e.printStackTrace();
 		}
 	}
+
+	// Gestisce chiusura del server in caso di SIG
+	private void closeServer() {
+		// Server salva ultima parola usata e tempo di estrazione
+		Path p = Paths.get("serverConfig.txt");
+		try {
+			List <String> lines = Files.readAllLines(p, StandardCharsets.UTF_8);
+			// Se config non aveva questi parametri : Append
+			if (lines.size()<=3) {
+				String toAppend = String.format("\n%s\n%s", word, Long.toString(wordExtraction.getTime()));
+				Files.write(p, toAppend.getBytes(), StandardOpenOption.APPEND);
+			}
+			// Se già ne aveva dall'avvio precedente li sostituiscoS
+			else {
+				lines.set(3, word);
+				lines.set(4, Long.toString(wordExtraction.getTime()));
+				Files.write(p, lines, StandardCharsets.UTF_8);
+			}
+		} 
+		catch (IOException e) {
+			e.printStackTrace();
+		}
+    }
 
 	// Classe interna: task per i thread
 	private class WordleTask implements Runnable {

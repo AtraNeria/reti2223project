@@ -58,7 +58,7 @@ public class WordleClient {
 		boolean exit = false;
 		int op;
 		while (!exit ){
-			String ans = c.readLine("Ciao! Scrivi:\n1 -Login\n2 -Signup\n3 -Play\n4 -Condividi score\n5 -Mostrami statistiche degli altri utenti\n6 -Logout\n");
+			String ans = c.readLine("Ciao! Scrivi:\n1 -Login\n2 -Signup\n3 -Play\n4 -Condividi score\n5 -Mostrami statistiche degli altri utenti\n6 -Logout\n7 -close\n");
 			op = Integer.parseInt(ans);
 			switch (op) {
 				case 1:
@@ -80,6 +80,9 @@ public class WordleClient {
 					// TO-DO: show me stats
 					break;
 				case 6:
+					login = false;
+					break;
+				case 7:
 					login = false;
 					exit = true;
 					break;
