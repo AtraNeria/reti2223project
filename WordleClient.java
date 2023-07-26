@@ -2,6 +2,7 @@ import java.net.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -222,32 +223,48 @@ public class WordleClient {
 	// 2 se la parola non è contemplata, 3 in caso di problemi col server
 	private int sendWord(String guess) {
 		int outcome = 0;
-		// Guess nel buffer di output
 		try {
-			// Scrivo richiesta di gioco al server
-			out = ByteBuffer.allocate(32);
-			out.putInt(1);
-			out.flip();
-			clientSocket.write(out);
-			// Controllo server ack
+			// Scrivo richiesta di gioco con guess al server
+			String toSend= "1"+guess;
+			out = ByteBuffer.wrap(toSend.getBytes());
+			int sent = clientSocket.write(out);
+			// Leggo risposta
 			in = ByteBuffer.allocate(32);
-			clientSocket.read(in);
+			int received = clientSocket.read(in);
 			in.flip();
-			int ack = in.getInt();
-			// Resetto buffer
-			in.clear();
-			out.clear();
-			// Se server ha accettato richiesta
-			if (ack==0){
-				// Scrivo guess al server
-				out = ByteBuffer.wrap(guess.getBytes());
-				clientSocket.write(out);
+			String hint = StandardCharsets.UTF_8.decode(in).toString();
+			// Se il tentativo è corretto
+			if (hint.equals("gggggggggg")) outcome = 1;
+			// Se il tentativo è valido
+			else if (hint.equals("notvalid")) outcome = 2;
+			else {
+				final String ANSI_WHITE = "\u001B[37m";
+				final String ANSI_YELLOW = "\u001B[33m";
+				final String ANSI_GREEN = "\u001B[32m";
+				final String ANSI_RESET = "\u001B[0m";
+				outcome = 0;
+
+				for (int i=0;i<10;i++){
+					switch (hint.charAt(i)){
+						case 'w':
+							System.out.print(ANSI_WHITE+guess.charAt(i)+ANSI_RESET);
+							break;
+						case 'y':
+							System.out.print(ANSI_YELLOW+guess.charAt(i)+ANSI_RESET);
+							break;
+						case 'g':
+							System.out.print(ANSI_GREEN+guess.charAt(i)+ANSI_RESET);
+							break;
+					}
+				}
+				System.out.print("\n");
 			}
-			// Se il server non è raggiungibile
-			else {outcome = 3;}
+			System.out.println(hint); //TEST
 		}
+		// Se il server non è raggiungibile
 		catch (IOException e) {
 			e.printStackTrace();
+			outcome = 3;
 		}
 		return outcome;
 	}

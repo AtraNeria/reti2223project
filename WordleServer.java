@@ -5,6 +5,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.sql.Timestamp;
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.IntBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
@@ -12,8 +13,10 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Scanner;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
@@ -61,7 +64,7 @@ public class WordleServer {
 	// Avvio il server, che entra in ascolto
 	public void startServer() throws IOException {
 
-		// Crep shutdown hook
+		// Creo shutdown hook
 		Thread sdHook = new Thread(()-> closeServer());
 		Runtime.getRuntime().addShutdownHook(sdHook);
 		// Creo la socket di ascolto passiva e la collego
@@ -87,6 +90,7 @@ public class WordleServer {
 			Set<SelectionKey> selKeys = selector. selectedKeys();
 			// Iteratore sulle chiavi per monitorare i canali
 			Iterator<SelectionKey> iter = selKeys.iterator();
+
 			while (iter.hasNext()) {
 				SelectionKey currKey = iter.next();
 				// Se un client richiede connessione
@@ -94,19 +98,42 @@ public class WordleServer {
 					acceptConnection(selector, welcomeSocket);
 					System.out.println("Got connected"); // TEST
 				}
+
 				// Se un client ha richiesta
 				if(currKey.isReadable()) {
 					SocketChannel chWithRequest = (SocketChannel)currKey.channel();
+					// Leggo la richiesta
 					ByteBuffer req = ByteBuffer.allocate(32);
-					chWithRequest.read(req); // TO-DO: check != 0
+					int bytesRead = chWithRequest.read(req);
+					req.flip();
+					int reqCode=-1;
+					String opArg = null;
+					// Se ho letto >= 1 bytes
+					if (bytesRead >= 1) {
+						// Primo byte = codice richiesta
+						byte [] code = new byte[1];
+						req.get(code,0,1);
+						reqCode = Integer.parseInt(new String(code,StandardCharsets.UTF_8));
+						System.out.println(reqCode); // TEST
+						// A seconda del codice leggo ulteriori byte
+						if (reqCode==1){
+							byte [] guessArr = new byte[10];
+							req.get(guessArr);
+							opArg = new String(guessArr, StandardCharsets.UTF_8);
+							System.out.println(opArg); //TEST
+						}
+					}
+
+					// Passo a thread worker
+					if (reqCode!=-1) {
+						WordleTask task = new WordleTask(chWithRequest, reqCode, opArg);
+						exec.submit(task);
+					}
+					// Altrimenti richiesta non valida -> chiudo connessione
+					// else
 					//while(!req.hasRemaining()) {
-					//	if (chWithRequest.read(req)==-1) {//TO-DO: handle close};
+					//	if (bytesRead==-1) {//TO-DO: handle close};
 					//}
-					int reqCode = req.getInt(0);
-					if (reqCode==1)
-						System.out.println(reqCode);   // TEST
-					WordleTask task = new WordleTask(chWithRequest, reqCode);
-					exec.submit(task);
 				}
 				iter.remove();
 			}
@@ -114,7 +141,7 @@ public class WordleServer {
 	}
 
 	// Accetta connessione dei client
-	private void acceptConnection(Selector selector, ServerSocketChannel serverSocket) throws IOException {
+ 	private void acceptConnection(Selector selector, ServerSocketChannel serverSocket) throws IOException {
 		// Accetto la connessione richiesta
 		SocketChannel client = serverSocket.accept();
 		// La inserisco tra le connessioni da monitorare
@@ -151,10 +178,10 @@ public class WordleServer {
 			List <String> lines = Files.readAllLines(p, StandardCharsets.UTF_8);
 			// Se config non aveva questi parametri : Append
 			if (lines.size()<=3) {
-				String toAppend = String.format("\n%s\n%s", word, Long.toString(wordExtraction.getTime()));
+				String toAppend = String.format("%s\n%s", word, Long.toString(wordExtraction.getTime()));
 				Files.write(p, toAppend.getBytes(), StandardOpenOption.APPEND);
 			}
-			// Se già ne aveva dall'avvio precedente li sostituiscoS
+			// Se già ne aveva dall'avvio precedente li sostituisco
 			else {
 				lines.set(3, word);
 				lines.set(4, Long.toString(wordExtraction.getTime()));
@@ -171,17 +198,10 @@ public class WordleServer {
 	
 		private SocketChannel client;
 		private int op;
+		private String parameter;
 		
 		@Override
 		public void run() {
-			// Invio Ack a client
-			try{
-				ByteBuffer ack = ByteBuffer.allocate(4);
-				ack.putInt(0);
-				ack.flip();
-				client.write(ack);
-			}
-			catch (IOException e) {e.printStackTrace();}
 
 			// Switch per controllare quale operazione deve essere eseguita
 			switch (op) {
@@ -205,24 +225,72 @@ public class WordleServer {
 		}
 	
 		// Metodo costruttore: chiede che socket deve servire e quale operazione deve svolgere
-		public WordleTask(SocketChannel toServe, int toDo) {
+		public WordleTask(SocketChannel toServe, int toDo, String opArg) {
 			client = toServe;
 			op = toDo;
+			parameter = opArg;
 		}
 	
 		// Gestisce gioco per un client
+		// Il parametro extra è qui la guess del client
 		private void play () {
-			ByteBuffer in = ByteBuffer.allocate(32);
+			// Genero hint 
+			char [] hint = generateHint(parameter);
+			ByteBuffer out = ByteBuffer.wrap(new String(hint).getBytes());
+			// Invio Hint al client
 			try {
-				// Leggo guess del client
-				if (client.read(in)>=0){
-					in.flip();
-					String guess = StandardCharsets.UTF_8.decode(in).toString();
-					// TO-DO: compare word to guess
-				}
+				client.write(out);
+			} catch (IOException e) {
+				e.printStackTrace();
 			}
-			catch (IOException e) {e.printStackTrace();}
 		}
+	}
+
+	// Genera hint comparando guess del client alla parola
+	private char [] generateHint (String guess) {
+        // Porto tentativo in minuscolo -> not case sensitive 
+        guess = guess.toLowerCase();
+		// Controllo se il tentativo è valido
+		if (!isInVocab(guess)) {
+			char [] notValid = {'n','o','t','v','a','l','i','d'};
+			return notValid;
+		}
+
+        // Inizializzo indizio a bianco
+        char[] hint = {'w','w','w','w','w','w','w','w','w','w'};
+        // Lista delle lettere non matchate dal tentativo
+        ArrayList<Character> notMatched = new ArrayList<>();
+        // Per ogni coppia di lettere
+        for (int i=0; i<10; i++){
+            // Se corrispondono coloro in verde
+            if (word.charAt(i)==guess.charAt(i)) hint[i] ='g';
+            // Altrimenti aggiungo a notMatched
+            else notMatched.add(word.charAt(i));
+        }
+        // Se ancora mancano dei match
+        if (!notMatched.isEmpty()) {
+            for (int i=0; i<10; i++) {
+                // Se le lettere non corrispondono
+                if (word.charAt(i) != guess.charAt(i)) {
+                    Object ch = guess.charAt(i);
+                    // Indizio viene colorato di giallo se la lettera è nella parola segreta e rimosso da notMatched
+                    if (notMatched.remove(ch)) hint[i]='y';
+                }
+            }
+        }
+        System.out.println(String.valueOf(hint));	//TEST
+        return hint;	
+	}
+
+	// Controlla se un tentativo di un utente è presente nel vocabolario
+	private boolean isInVocab (String guess) {
+		boolean ans = false;
+		try {ans = Files.lines(Paths.get("words.txt")).anyMatch(l -> l.contains(guess));
+		}
+		catch (IOException e) {
+			e.printStackTrace();
+		}
+		return ans;
 	}
 
 }
