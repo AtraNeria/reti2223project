@@ -3,6 +3,10 @@ import java.io.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.rmi.NotBoundException;
+import java.rmi.RemoteException;
+import java.rmi.registry.LocateRegistry;
+import java.rmi.registry.Registry;
 import java.sql.Timestamp;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
@@ -14,6 +18,7 @@ import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Scanner;
@@ -53,7 +58,8 @@ public class WordleServer {
 			// se sono specificate anche parola e tempo di estrazione di questa
 			if (param.size()>3) {
 				word = param.get(3);
-				wordExtraction = new Timestamp(TimeUnit.HOURS.toMillis(Long.parseLong(param.get(4))));
+				wordExtraction = new Timestamp(0);
+				wordExtraction.setTime(Long.parseLong(param.get(4)));
 			}
 			else extractWord();
 		} catch (IOException e) {
@@ -84,13 +90,14 @@ public class WordleServer {
 		while (true) {
 			// Controllo se devo estrarre nuova parola
 			Timestamp now = new Timestamp(System.currentTimeMillis());
-			if (now.getTime()-wordExtraction.getTime()>= wordLapse) extractWord();
+			if (now.getTime()-wordExtraction.getTime()>=wordLapse) extractWord();
 			selector.select();
 			// Insieme di chiavi
 			Set<SelectionKey> selKeys = selector. selectedKeys();
 			// Iteratore sulle chiavi per monitorare i canali
 			Iterator<SelectionKey> iter = selKeys.iterator();
 
+			// TO-DO: close connecctions
 			while (iter.hasNext()) {
 				SelectionKey currKey = iter.next();
 				// Se un client richiede connessione
@@ -116,8 +123,8 @@ public class WordleServer {
 						reqCode = Integer.parseInt(new String(code,StandardCharsets.UTF_8));
 						System.out.println(reqCode); // TEST
 						// A seconda del codice leggo ulteriori byte
-						if (reqCode==1){
-							byte [] guessArr = new byte[10];
+						if (reqCode==1 || reqCode==5){
+							byte [] guessArr = new byte[req.remaining()];
 							req.get(guessArr);
 							opArg = new String(guessArr, StandardCharsets.UTF_8);
 							System.out.println(opArg); //TEST
@@ -220,6 +227,9 @@ public class WordleServer {
 				case 4:
 					//TO-DO: Share
 					break;
+				case 5:
+					hasPlayed();
+					break;
 			}
 	
 		}
@@ -231,6 +241,34 @@ public class WordleServer {
 			parameter = opArg;
 		}
 	
+		// Controllo se un giocatore identificato da user ha già giocato per la parola corrente
+		public void hasPlayed() {
+			try {
+				// Connetto a server remoto per accesso al DB
+				Registry reg = LocateRegistry.getRegistry(2020);
+				RemoteServerInterface remoteServer = (RemoteServerInterface) reg.lookup("RemoteWordleService");
+				// Chiedo ultima volta in cui il client (identificato da userna,e) ha giocato
+				Timestamp lastPlayed = remoteServer.getLastPlayed(parameter);
+				int code = 0;
+				// Controllo se gioca per la prima volta
+				if (lastPlayed == null) code = 1;
+				// Altrimenti ontrollo se da allora è stata refreshata
+				else {
+					Timestamp now = new Timestamp(System.currentTimeMillis());
+					if (now.getTime()-lastPlayed.getTime()>=wordLapse) code = 1;
+				}
+				// Invio risposta al giocatore
+				ByteBuffer out = ByteBuffer.allocate(32);
+				System.out.println(code);
+				out.putInt(code);
+				out.flip();
+				client.write(out);
+
+			} catch (NotBoundException | IOException e) {
+				e.printStackTrace();
+			}
+		}
+
 		// Gestisce gioco per un client
 		// Il parametro extra è qui la guess del client
 		private void play () {
@@ -244,53 +282,56 @@ public class WordleServer {
 				e.printStackTrace();
 			}
 		}
-	}
 
-	// Genera hint comparando guess del client alla parola
-	private char [] generateHint (String guess) {
-        // Porto tentativo in minuscolo -> not case sensitive 
-        guess = guess.toLowerCase();
-		// Controllo se il tentativo è valido
-		if (!isInVocab(guess)) {
-			char [] notValid = {'n','o','t','v','a','l','i','d'};
-			return notValid;
+		// Genera hint comparando guess del client alla parola
+		private char [] generateHint (String guess) {
+			// Porto tentativo in minuscolo -> not case sensitive 
+			guess = guess.toLowerCase();
+			// Controllo se il tentativo è valido
+			if (!isInVocab(guess)) {
+				char [] notValid = {'n','o','t','v','a','l','i','d'};
+				return notValid;
+			}
+
+			// Inizializzo indizio a bianco
+			char[] hint = {'w','w','w','w','w','w','w','w','w','w'};
+			// Lista delle lettere non matchate dal tentativo
+			ArrayList<Character> notMatched = new ArrayList<>();
+			// Per ogni coppia di lettere
+			for (int i=0; i<10; i++){
+				// Se corrispondono coloro in verde
+				if (word.charAt(i)==guess.charAt(i)) hint[i] ='g';
+				// Altrimenti aggiungo a notMatched
+				else notMatched.add(word.charAt(i));
+			}
+			// Se ancora mancano dei match
+			if (!notMatched.isEmpty()) {
+				for (int i=0; i<10; i++) {
+					// Se le lettere non corrispondono
+					if (word.charAt(i) != guess.charAt(i)) {
+						Object ch = guess.charAt(i);
+						// Indizio viene colorato di giallo se la lettera è nella parola segreta e rimosso da notMatched
+						if (notMatched.remove(ch)) hint[i]='y';
+					}
+				}
+			}
+			System.out.println(String.valueOf(hint));	//TEST
+			return hint;	
 		}
 
-        // Inizializzo indizio a bianco
-        char[] hint = {'w','w','w','w','w','w','w','w','w','w'};
-        // Lista delle lettere non matchate dal tentativo
-        ArrayList<Character> notMatched = new ArrayList<>();
-        // Per ogni coppia di lettere
-        for (int i=0; i<10; i++){
-            // Se corrispondono coloro in verde
-            if (word.charAt(i)==guess.charAt(i)) hint[i] ='g';
-            // Altrimenti aggiungo a notMatched
-            else notMatched.add(word.charAt(i));
-        }
-        // Se ancora mancano dei match
-        if (!notMatched.isEmpty()) {
-            for (int i=0; i<10; i++) {
-                // Se le lettere non corrispondono
-                if (word.charAt(i) != guess.charAt(i)) {
-                    Object ch = guess.charAt(i);
-                    // Indizio viene colorato di giallo se la lettera è nella parola segreta e rimosso da notMatched
-                    if (notMatched.remove(ch)) hint[i]='y';
-                }
-            }
-        }
-        System.out.println(String.valueOf(hint));	//TEST
-        return hint;	
+		// Controlla se un tentativo di un utente è presente nel vocabolario
+		private boolean isInVocab (String guess) {
+			boolean ans = false;
+			try {ans = Files.lines(Paths.get("words.txt")).anyMatch(l -> l.contains(guess));
+			}
+			catch (IOException e) {
+				e.printStackTrace();
+			}
+			return ans;
+		}
+
 	}
 
-	// Controlla se un tentativo di un utente è presente nel vocabolario
-	private boolean isInVocab (String guess) {
-		boolean ans = false;
-		try {ans = Files.lines(Paths.get("words.txt")).anyMatch(l -> l.contains(guess));
-		}
-		catch (IOException e) {
-			e.printStackTrace();
-		}
-		return ans;
-	}
+
 
 }

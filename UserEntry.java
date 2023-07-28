@@ -1,4 +1,5 @@
 import java.lang.System;
+import java.sql.Timestamp;
 import java.util.Arrays;
 
 public class UserEntry {
@@ -7,6 +8,7 @@ public class UserEntry {
     int score;
     int games;
     int triesAvrg;
+    Timestamp lastPlayed;
 
     // Metodo costruttore
     public UserEntry(char[] pass) {
@@ -14,6 +16,7 @@ public class UserEntry {
         score = 0;
         games = 0;
         triesAvrg = 0;
+        lastPlayed = null;
     }
 
     // Metodo per aumentare il punteggio di un utente

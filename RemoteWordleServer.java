@@ -1,9 +1,9 @@
 import java.rmi.RemoteException;
+import java.sql.Timestamp;
 import java.util.Arrays;
 import java.util.concurrent.ConcurrentHashMap;
 import com.google.gson.*;
 import com.google.gson.reflect.TypeToken;
-
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
@@ -54,6 +54,11 @@ public class RemoteWordleServer extends java.rmi.server.UnicastRemoteObject impl
 		//TO-DO: custom exceptions
 		else if (!Arrays.equals(password, loginAttempt.password)) ex = 1;
 		return ex;
+	}
+
+	// Restituisce un timestamp che indica l'ultima volta in cui il giocatore username ha giocato
+	public Timestamp getLastPlayed(String username) throws RemoteException {
+		return usersDB.get(username).lastPlayed;
 	}
 
 	// Salva su file json lo stato del database utenti db

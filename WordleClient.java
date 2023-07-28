@@ -26,6 +26,7 @@ public class WordleClient {
 	private ByteBuffer out;
 	private ByteBuffer in;
 	private boolean login;
+	private String user;
 	
 	// Metodo costruttore
 	public WordleClient() throws Exception {
@@ -135,6 +136,7 @@ public class WordleClient {
 		catch (Exception e) {
 			e.printStackTrace();
 		}
+		if (login) user = name;
 		return login;
 	}
 	
@@ -167,6 +169,7 @@ public class WordleClient {
 		catch (Exception e) {
 			e.printStackTrace();
 		}
+		if (exit) user = name;
 		return exit;
 	}
 	
@@ -179,43 +182,71 @@ public class WordleClient {
 		catch (IOException e) {
 			System.err.println("Impossibile connettersi");
 		}
-
-		// 12 tentativi
-		int chances = 12;
-		boolean won = false;
-		int outcome;
-		while (chances!=0 && !won) {
-			String guess = c.readLine("Prova a indovinare\n");
-			// La parola deve essere di 10 lettere
-			if (guess.length()!=10) {
-				System.out.println("La parola deve essere di 10 lettere!");
-				continue;
-			}
-			outcome = sendWord(guess);
-			switch (outcome) {
-				// Errata
-				case 0:
-					chances--;
-					System.out.println("Hai ancora "+(chances)+" tentativi!");
-					break;
-				// Corretta
-				case 1:
-					won=true;
-					System.out.println("Hai indovinato in "+(12-chances)+" tentativi!");
-					break;
-				// Non nel vocabolario
-				case 2:
-					System.out.println("Parola non nel vocabolario; non ti verranno sottratti tentativi!");
-					break;
-				// Problemi a raggiungere il server
-				case 3:
-					chances = 0;
-					System.out.println("Server non raggiungibile!");
-					break;
-			}
+		// Controllo se l'utente ha già giocato per questa parola
+		if (hasPlayed()) {
+			System.out.println("Hai già giocato per questa parola!");
+			//TO-DO: stucks
 		}
-		// TO-DO
-		//if (won) updateScore(); sendMeStats();
+		else {		
+			// 12 tentativi
+			int chances = 12;
+			boolean won = false;
+			int outcome;
+			while (chances!=0 && !won) {
+				String guess = c.readLine("Prova a indovinare\n");
+				// La parola deve essere di 10 lettere
+				if (guess.length()!=10) {
+					System.out.println("La parola deve essere di 10 lettere!");
+					continue;
+				}
+				outcome = sendWord(guess);
+				switch (outcome) {
+					// Errata
+					case 0:
+						chances--;
+						System.out.println("Hai ancora "+(chances)+" tentativi!");
+						break;
+					// Corretta
+					case 1:
+						won=true;
+						System.out.println("Hai indovinato in "+(12-chances)+" tentativi!");
+						break;
+					// Non nel vocabolario
+					case 2:
+						System.out.println("Parola non nel vocabolario; non ti verranno sottratti tentativi!");
+						break;
+					// Problemi a raggiungere il server
+					case 3:
+						chances = 0;
+						System.out.println("Server non raggiungibile!");
+						break;
+				}
+			}
+			// TO-DO
+			//if (won) updateScore(); sendMeStats(); updateLastPlayed;
+		}	
+	}
+
+	// Chiede al server se si è già giocato per la parola corrente
+	private boolean hasPlayed() {
+		boolean played = false;
+		// Faccio richiesta di auth al server
+		String toSend= "5"+user;
+		out = ByteBuffer.wrap(toSend.getBytes());
+		try {
+			clientSocket.write(out);
+			// Leggo risposta
+			in = ByteBuffer.allocate(32);
+			clientSocket.read(in);
+			in.flip();
+			int ans = in.getInt();
+			// Se è 0 user ha già giocato per la parola corrente
+			if (ans==0) played=true;
+			else played=false;
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		return played;
 	}
 
 	// Invia un tentativo al server
