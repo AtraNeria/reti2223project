@@ -1,7 +1,6 @@
 import java.net.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -9,9 +8,6 @@ import java.nio.file.Paths;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.util.List;
-import javax.management.remote.rmi.RMIServer;
-
-import java.beans.Encoder;
 import java.io.*;
 
 public class WordleClient {
@@ -55,7 +51,7 @@ public class WordleClient {
 		}
 	}
 	
-	// Chiede all'utente se desidera accedere o registrarsi                                                        
+	// Chiede all'utente cosa desidera fare                                                        
 	public void greet() {
 		boolean exit = false;
 		int op;
@@ -185,7 +181,6 @@ public class WordleClient {
 		// Controllo se l'utente ha già giocato per questa parola
 		if (hasPlayed()) {
 			System.out.println("Hai già giocato per questa parola!");
-			//TO-DO: stucks
 		}
 		else {		
 			// 12 tentativi
@@ -209,6 +204,7 @@ public class WordleClient {
 					// Corretta
 					case 1:
 						won=true;
+						System.out.println("\u001B[32m"+guess+"\u001B[0m");
 						System.out.println("Hai indovinato in "+(12-chances)+" tentativi!");
 						break;
 					// Non nel vocabolario
@@ -222,8 +218,8 @@ public class WordleClient {
 						break;
 				}
 			}
-			// TO-DO
-			//if (won) updateScore(); sendMeStats(); updateLastPlayed;
+			// Aggiorno info sull'utente
+			updatePlayerInfo(won, chances);
 		}	
 	}
 
@@ -299,4 +295,33 @@ public class WordleClient {
 		}
 		return outcome;
 	}
+
+	// Aggiorna informazioni sul giocatore dopo una partita
+	private void updatePlayerInfo (boolean won, int tries) {
+		// Aggiorno data ultima partita
+		updateLastPlayed();
+		// Se la partita è stata vinta aggiorno il punteggio
+		if (won) updateScore(tries);
+	}
+
+	// Ho vinto in tries tentativi
+	// Chiedo al server di aggiornare il mio punteggio
+	private void updateScore (int tries) {
+		// TO-DO
+	}
+
+	// Chiedo al server di aggiornare l'ultima volta in cui si è giocato
+	private void updateLastPlayed () {
+		// Faccio richiesta di auth al server
+		String toSend= "6"+user;
+		out = ByteBuffer.wrap(toSend.getBytes());
+		try {
+			clientSocket.write(out);
+		}
+		catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+	
+
 }

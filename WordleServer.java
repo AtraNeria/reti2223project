@@ -3,14 +3,8 @@ import java.io.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.rmi.NotBoundException;
-import java.rmi.RemoteException;
-import java.rmi.registry.LocateRegistry;
-import java.rmi.registry.Registry;
 import java.sql.Timestamp;
 import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
-import java.nio.IntBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
@@ -18,10 +12,8 @@ import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Scanner;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
@@ -123,7 +115,7 @@ public class WordleServer {
 						reqCode = Integer.parseInt(new String(code,StandardCharsets.UTF_8));
 						System.out.println(reqCode); // TEST
 						// A seconda del codice leggo ulteriori byte
-						if (reqCode==1 || reqCode==5){
+						if (reqCode==1 || reqCode==5 || reqCode==6){
 							byte [] guessArr = new byte[req.remaining()];
 							req.get(guessArr);
 							opArg = new String(guessArr, StandardCharsets.UTF_8);
@@ -194,6 +186,9 @@ public class WordleServer {
 				lines.set(4, Long.toString(wordExtraction.getTime()));
 				Files.write(p, lines, StandardCharsets.UTF_8);
 			}
+			// Serializzo database
+			Database usersDB = Database.getDB();
+			usersDB.serializeDB();
 		} 
 		catch (IOException e) {
 			e.printStackTrace();
@@ -215,6 +210,7 @@ public class WordleServer {
 				case 0:
 					// TO-DO: Show
 					break;
+				//Ricevo guess e invio hint a user
 				case 1:
 					play();
 					break;
@@ -227,8 +223,13 @@ public class WordleServer {
 				case 4:
 					//TO-DO: Share
 					break;
+				// Controllo se uno user ha già giocato per la parola
 				case 5:
 					hasPlayed();
+					break;
+				// Aggiorno ultima parola per cui user ha già giocato
+				case 6:
+					updateLastTimePlayed();
 					break;
 			}
 	
@@ -244,19 +245,14 @@ public class WordleServer {
 		// Controllo se un giocatore identificato da user ha già giocato per la parola corrente
 		public void hasPlayed() {
 			try {
-				// Connetto a server remoto per accesso al DB
-				Registry reg = LocateRegistry.getRegistry(2020);
-				RemoteServerInterface remoteServer = (RemoteServerInterface) reg.lookup("RemoteWordleService");
-				// Chiedo ultima volta in cui il client (identificato da userna,e) ha giocato
-				Timestamp lastPlayed = remoteServer.getLastPlayed(parameter);
+				// Chiedo al DB l'ultima parola per cui il client (identificato da username) ha giocato
+				Database usersDB = Database.getDB();
+				String lastWordGuess = usersDB.getLastPlayed(parameter);
 				int code = 0;
 				// Controllo se gioca per la prima volta
-				if (lastPlayed == null) code = 1;
-				// Altrimenti ontrollo se da allora è stata refreshata
-				else {
-					Timestamp now = new Timestamp(System.currentTimeMillis());
-					if (now.getTime()-lastPlayed.getTime()>=wordLapse) code = 1;
-				}
+				if (lastWordGuess == null) code = 1;
+				// Altrimenti controllo se la parola attuale è diversa
+				else if (!lastWordGuess.equals(word)) code = 1;
 				// Invio risposta al giocatore
 				ByteBuffer out = ByteBuffer.allocate(32);
 				System.out.println(code);
@@ -264,9 +260,16 @@ public class WordleServer {
 				out.flip();
 				client.write(out);
 
-			} catch (NotBoundException | IOException e) {
+			} catch (IOException e) {
 				e.printStackTrace();
 			}
+		}
+
+		// Aggiorno ultima parola per cui uno user ha giocato
+		public void updateLastTimePlayed () {
+			System.out.println(parameter); //TO-DO
+			Database usersDB = Database.getDB();
+			usersDB.updateLastPlayed(parameter,word);
 		}
 
 		// Gestisce gioco per un client

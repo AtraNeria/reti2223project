@@ -2,11 +2,12 @@ import java.io.IOException;
 import java.rmi.AlreadyBoundException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
-import java.rmi.server.*;
 
 public class ServerMain {
 
     public static void main(String[] args){
+        // Recupero database degli utenti
+        Database users = Database.getDB();
         // Creo server
         WordleServer server = new WordleServer();
         // Creo server per servizi da remoto
