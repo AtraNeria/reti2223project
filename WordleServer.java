@@ -115,7 +115,7 @@ public class WordleServer {
 						reqCode = Integer.parseInt(new String(code,StandardCharsets.UTF_8));
 						System.out.println(reqCode); // TEST
 						// A seconda del codice leggo ulteriori byte
-						if (reqCode==1 || reqCode==5 || reqCode==6){
+						if (reqCode==1 || reqCode==5 || reqCode==6 || reqCode == 7){
 							byte [] guessArr = new byte[req.remaining()];
 							req.get(guessArr);
 							opArg = new String(guessArr, StandardCharsets.UTF_8);
@@ -231,6 +231,9 @@ public class WordleServer {
 				case 6:
 					updateLastTimePlayed();
 					break;
+				case 7:
+					upateUserScore();
+					break;
 			}
 	
 		}
@@ -270,6 +273,18 @@ public class WordleServer {
 			System.out.println(parameter); //TO-DO
 			Database usersDB = Database.getDB();
 			usersDB.updateLastPlayed(parameter,word);
+			sendAck(0);
+		}
+
+		// Aggiorno punteggio di uno user dopo una partita vinta in tries tentativi
+		public void upateUserScore () {
+			// Token stringa: username + numero di tentativi impiegati
+			String [] pars = parameter.split(" ");
+			String username = pars[0];
+			String tries = pars[1];
+			// Aggiorno database
+			Database usersDB = Database.getDB();
+			usersDB.updateScore(username, Integer.valueOf(tries));
 		}
 
 		// Gestisce gioco per un client
@@ -333,8 +348,21 @@ public class WordleServer {
 			return ans;
 		}
 
-	}
+		// Invio int ret come ack a client
+		private void sendAck(int ret) {
+			//String toSend = "0";
+			//ByteBuffer ack = ByteBuffer.wrap(toSend.getBytes());
+			ByteBuffer ack = ByteBuffer.allocate(4);
+			ack.putInt(ret);
+			ack.flip();
+			try {
+				client.write(ack);
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
 
+	}
 
 
 }

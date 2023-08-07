@@ -90,11 +90,18 @@ public class Database {
         return usersDB.get(username).lastPlayed;
     }
 	
-    // Aggiorno last played timestamp per username
+    // Aggiorno last played word per username
 	public void updateLastPlayed (String username, String word) {
 		UserEntry userInfo = usersDB.get(username);
 		userInfo.setLastPlayed(word);
 	}
 
+    // Aggiorna punteggio di username dopo che ha indovinato in tries tentativi
+    public void updateScore (String username, int tries) {
+        UserEntry toUpdate = usersDB.get(username);
+        toUpdate.totTries+=tries;
+        toUpdate.gamesWon++;
+        toUpdate.score = toUpdate.gamesWon / (toUpdate.totTries/toUpdate.gamesWon);
+    }
 
 }

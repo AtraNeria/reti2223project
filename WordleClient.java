@@ -96,7 +96,7 @@ public class WordleClient {
 	private boolean getLogin() {
 		// Leggo Username
 		String name = c.readLine("Username: ");
-		//Massimo 12 char
+		// Massimo 12 char
 		if (name.length()> 12) {
 			System.out.println("Username troppo lungo! Deve essere massimo 12 caratteri.");
 			return false;
@@ -146,6 +146,11 @@ public class WordleClient {
 		if (name.length()> 12) {
 			System.out.println("Username troppo lungo! Deve essere massimo 12 caratteri.");
 			exit = false;
+		}
+		// Non può contenere uno spazio
+		if (name.contains(" ")) {
+			System.out.println("Lo username non può contenere uno spazio.");
+			return false;
 		}
 		// Controllo lunghezza password
 		if (password.length > 24) {
@@ -203,6 +208,7 @@ public class WordleClient {
 						break;
 					// Corretta
 					case 1:
+						chances--;
 						won=true;
 						System.out.println("\u001B[32m"+guess+"\u001B[0m");
 						System.out.println("Hai indovinato in "+(12-chances)+" tentativi!");
@@ -298,8 +304,9 @@ public class WordleClient {
 
 	// Aggiorna informazioni sul giocatore dopo una partita
 	private void updatePlayerInfo (boolean won, int tries) {
-		// Aggiorno data ultima partita
+		// Aggiorno parola ultima partita
 		updateLastPlayed();
+		getAck();
 		// Se la partita è stata vinta aggiorno il punteggio
 		if (won) updateScore(tries);
 	}
@@ -307,7 +314,15 @@ public class WordleClient {
 	// Ho vinto in tries tentativi
 	// Chiedo al server di aggiornare il mio punteggio
 	private void updateScore (int tries) {
-		// TO-DO
+		// Invio codice richiesta 7, username, e numero tentativi
+		String toSend = "7"+user+" "+(12-tries);
+		out = ByteBuffer.wrap(toSend.getBytes());
+		try {
+			clientSocket.write(out);
+		}
+		catch (IOException e) {
+			e.printStackTrace();
+		}
 	}
 
 	// Chiedo al server di aggiornare l'ultima volta in cui si è giocato
@@ -323,5 +338,18 @@ public class WordleClient {
 		}
 	}
 	
+	// Legge ack da server
+	private int getAck () {
+		int ack = 1;
+		try {
+			in = ByteBuffer.allocate(32);
+			clientSocket.read(in);
+			in.flip();
+			ack = in.getInt();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		return ack;
+	}
 
 }
