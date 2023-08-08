@@ -5,6 +5,7 @@ public class UserEntry {
     char[] password;
     int score;
     int gamesWon;
+    int totGamesPlayed;
     int totTries;
     String lastPlayed;
 
@@ -13,16 +14,12 @@ public class UserEntry {
         password = Arrays.copyOf(pass, pass.length);
         score = 0;
         gamesWon = 0;
+        totGamesPlayed = 0;
         totTries = 0;
         lastPlayed = null;
     }
 
-    // Metodo per aumentare il punteggio di un utente
-    public void ScoreIncrease(int plus) {
-        if (plus >= 0) score = score + plus;
-    }
-
-    // Aggiorno astPlayed
+    // Aggiorno lastPlayed
     public void setLastPlayed(String word) {
         lastPlayed = word;
     }

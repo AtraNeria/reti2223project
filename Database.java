@@ -90,10 +90,11 @@ public class Database {
         return usersDB.get(username).lastPlayed;
     }
 	
-    // Aggiorno last played word per username
+    // Aggiorno last played word per username e totale partite giocate
 	public void updateLastPlayed (String username, String word) {
 		UserEntry userInfo = usersDB.get(username);
 		userInfo.setLastPlayed(word);
+        userInfo.totGamesPlayed++;
 	}
 
     // Aggiorna punteggio di username dopo che ha indovinato in tries tentativi
@@ -102,6 +103,15 @@ public class Database {
         toUpdate.totTries+=tries;
         toUpdate.gamesWon++;
         toUpdate.score = toUpdate.gamesWon / (toUpdate.totTries/toUpdate.gamesWon);
+    }
+
+    // Restituisce una stringa che contiene le seguenti informazioni su username:
+    // il punteggio, il numero di partite vinti, il numero di partite totali, il numero medio di tentativi impiegati per vincere
+    // Le informazioni avranno come divisore uno spazio l'una dall'altra
+    public String getUserStats (String username) {
+        UserEntry user = usersDB.get(username);
+        String stats = user.score +" "+user.gamesWon+" "+user.totGamesPlayed+" "+(user.totTries/user.gamesWon);
+        return stats;
     }
 
 }

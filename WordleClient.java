@@ -56,15 +56,17 @@ public class WordleClient {
 		boolean exit = false;
 		int op;
 		while (!exit ){
-			String ans = c.readLine("Ciao! Scrivi:\n1 -Login\n2 -Signup\n3 -Play\n4 -Condividi score\n5 -Mostrami statistiche degli altri utenti\n6 -Logout\n7 -close\n");
+			String ans = c.readLine("Ciao! Scrivi:\n1 -Login\n2 -Signup\n3 -Play\n4 -Condividi score\n5 -Mostrami le mie statistiche\n6 -Logout\n7 -close\n");
 			op = Integer.parseInt(ans);
 			switch (op) {
 				case 1:
-					getLogin();
+					if (!login) getLogin();
+					else System.out.print("Sei già connesso!\n");
 					if (login) System.out.print("Connesso con successo!\n");
 					break;
 				case 2:
-					getSignup();
+					if (!login) getSignup();
+					else System.out.print("Hai già effettuato l'accesso con un account!\n");
 					if (login) System.out.print("Registrato con successo! Sei ancora connesso!\n");
 					break;
 				case 3:
@@ -75,7 +77,8 @@ public class WordleClient {
 					// TO-DO: share
 					break;
 				case 5:
-					// TO-DO: show me stats
+					if (login) showMyStats();
+					else System.out.print("Accedi per vedere le tue statistiche!");
 					break;
 				case 6:
 					login = false;
@@ -119,6 +122,7 @@ public class WordleClient {
 			switch (rc) {
 				case 0:
 					System.out.println("Login avvenuto con successo!");
+					user = name;
 					login = true;
 					break;
 				case 1:
@@ -142,22 +146,35 @@ public class WordleClient {
 		String name = c.readLine("Username: ");
 		char[] password = c.readPassword("Password: ");
 		boolean exit = true;
-		// Controllo lunghezza nome
-		if (name.length()> 12) {
-			System.out.println("Username troppo lungo! Deve essere massimo 12 caratteri.");
-			exit = false;
+		boolean valid = false;
+
+		// Richiedo credenziali fino a che user non ne fornisce di valide
+		while (!valid) {
+			// Controllo lunghezza nome
+			if (name.length()> 12) {
+				System.out.println("Username troppo lungo! Deve essere massimo 12 caratteri.");
+			}
+			else if (name.length()==0) {
+				System.out.println("Username vuoto.");
+			}
+			// Nome non può contenere uno spazio
+			else if (name.contains(" ")) {
+				System.out.println("Lo username non può contenere uno spazio.");
+			}
+			// Controllo lunghezza password
+			else if (password.length == 0) {
+				System.out.println("Password vuota.");
+			}
+			else if (password.length > 24) {
+				System.out.println("Password troppo lunga! Deve essere massimo 24 caratteri.");
+			}
+			else valid = true;
+			if (!valid) {
+				name = c.readLine("Username: ");
+				password = c.readPassword("Password: ");
+			}
 		}
-		// Non può contenere uno spazio
-		if (name.contains(" ")) {
-			System.out.println("Lo username non può contenere uno spazio.");
-			return false;
-		}
-		// Controllo lunghezza password
-		if (password.length > 24) {
-			System.out.println("Password troppo lunga! Deve essere massimo 24 caratteri.");
-			exit = false;
-		}
-		
+
 		try {
 			// Connetto al server remoto
 			Registry reg = LocateRegistry.getRegistry(2020);
@@ -233,7 +250,7 @@ public class WordleClient {
 	private boolean hasPlayed() {
 		boolean played = false;
 		// Faccio richiesta di auth al server
-		String toSend= "5"+user;
+		String toSend= "8"+user;
 		out = ByteBuffer.wrap(toSend.getBytes());
 		try {
 			clientSocket.write(out);
@@ -338,6 +355,29 @@ public class WordleClient {
 		}
 	}
 	
+	// Richiede e stampa statistiche dell'utente
+	private void showMyStats () {
+		try {
+			// Se non è già aperta apro connessione
+			if (clientSocket==null) clientSocket = SocketChannel.open(host);
+			// Invio richiesta delle statistiche
+			String toSend= "5"+user;
+			out = ByteBuffer.wrap(toSend.getBytes());
+			clientSocket.write(out);
+			// Leggo risposta server
+			in = ByteBuffer.allocate(32);
+			clientSocket.read(in);
+			in.flip();
+			// Stampo le statistiche formattate
+			String stats = StandardCharsets.UTF_8.decode(in).toString();
+			String [] st = stats.split(" ");
+			System.out.println("Score: "+st[0]+"\nPartite vinte: "+st[1]+"\nPartite vinte: "+st[2]+"\nNumero medio di tentativi per vincere: "+st[3]);
+		}
+		catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+
 	// Legge ack da server
 	private int getAck () {
 		int ack = 1;

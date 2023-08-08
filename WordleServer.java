@@ -115,12 +115,12 @@ public class WordleServer {
 						reqCode = Integer.parseInt(new String(code,StandardCharsets.UTF_8));
 						System.out.println(reqCode); // TEST
 						// A seconda del codice leggo ulteriori byte
-						if (reqCode==1 || reqCode==5 || reqCode==6 || reqCode == 7){
+						//if (reqCode==1 || reqCode==5 || reqCode==6 || reqCode == 7){
 							byte [] guessArr = new byte[req.remaining()];
 							req.get(guessArr);
 							opArg = new String(guessArr, StandardCharsets.UTF_8);
 							System.out.println(opArg); //TEST
-						}
+						//}
 					}
 
 					// Passo a thread worker
@@ -223,16 +223,21 @@ public class WordleServer {
 				case 4:
 					//TO-DO: Share
 					break;
-				// Controllo se uno user ha già giocato per la parola
+				// Invio ad un utente le sue statistiche
 				case 5:
-					hasPlayed();
+					sendStats();
 					break;
 				// Aggiorno ultima parola per cui user ha già giocato
 				case 6:
 					updateLastTimePlayed();
 					break;
+				// Aggiorno punteggio di un utente
 				case 7:
-					upateUserScore();
+					updateUserScore();
+					break;
+				// Controllo se uno user ha già giocato per la parola corrente
+				case 8:
+					hasPlayed();
 					break;
 			}
 	
@@ -277,7 +282,7 @@ public class WordleServer {
 		}
 
 		// Aggiorno punteggio di uno user dopo una partita vinta in tries tentativi
-		public void upateUserScore () {
+		public void updateUserScore () {
 			// Token stringa: username + numero di tentativi impiegati
 			String [] pars = parameter.split(" ");
 			String username = pars[0];
@@ -346,6 +351,19 @@ public class WordleServer {
 				e.printStackTrace();
 			}
 			return ans;
+		}
+
+		// Invio le statistiche ad un utente
+		private void sendStats() {
+			Database usersDB = Database.getDB();
+			String stats = usersDB.getUserStats(parameter);
+			ByteBuffer out = ByteBuffer.wrap(stats.getBytes());
+			// Invio statistiche al client
+			try {
+				client.write(out);
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
 		}
 
 		// Invio int ret come ack a client
