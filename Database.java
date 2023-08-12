@@ -6,7 +6,10 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -89,11 +92,32 @@ public class Database {
     public String getLastPlayed (String username) {
         return usersDB.get(username).lastPlayed;
     }
-	
+
+    // Controlla se user ha già fatto dei tentativi per la parola word
+    public int hasPending (String username, String word) {
+        UserEntry u = usersDB.get(username);
+        return u.hasUnfinishedMatch(word);
+    }
+
+    // Restituisce una stringa con tutti i tentativi effettuati dallo user, ciascuno seguito dalla relativa hint
+    public String getAttemptString (String username) {
+        UserEntry u = usersDB.get(username);
+        return u.session.getAttempts();
+    }
+
+    // Registro nuovo tentativo di user per parola word e relativo suggerimento
+    public void addAttempt (String username, String guess, String hint, String word) {
+        UserEntry u = usersDB.get(username);
+        // Controllo se la parola della sessione corrisponde a quella corrente
+        // Se non corrispondono setto la parola per avviare la nuova sessione
+        if (!word.equals(u.session.getWord())) u.session.setNewWord(word);
+        u.session.addCouple(guess, hint);
+    }
+
     // Aggiorno last played word per username e totale partite giocate
-	public void updateLastPlayed (String username, String word) {
+	public void updateLastPlayed (String username, String word, boolean won) {
 		UserEntry userInfo = usersDB.get(username);
-		userInfo.setLastPlayed(word);
+		userInfo.setLastPlayed(word, won);
         userInfo.totGamesPlayed++;
 	}
 
@@ -112,6 +136,116 @@ public class Database {
         UserEntry user = usersDB.get(username);
         String stats = user.score +" "+user.gamesWon+" "+user.totGamesPlayed+" "+(user.totTries/user.gamesWon);
         return stats;
+    }
+
+    // Restituisce una stringa sul risultato dell'ultima partita di username
+    public String getLastMatchResult (String username) {
+        UserEntry user = usersDB.get(username);
+        String lastMatch;
+        if (user.lastPlayedWon) lastMatch = username+" ha vinto la sua ultima partita!";
+        else lastMatch = username+" ha vinto la sua ultima partita!";
+        return lastMatch;
+    }
+
+
+
+    // Classe interna per dati utente
+    private class UserEntry {
+
+        char[] password;
+        int score;
+        int gamesWon;
+        int totGamesPlayed;
+        int totTries;
+        String lastPlayed;
+        boolean lastPlayedWon;
+        MatchSession session;
+    
+        // Metodo costruttore
+        public UserEntry(char[] pass) {
+            password = Arrays.copyOf(pass, pass.length);
+            score = 0;
+            gamesWon = 0;
+            totGamesPlayed = 0;
+            totTries = 0;
+            lastPlayed = null;
+            lastPlayedWon = false;
+            session = new MatchSession();
+        }
+    
+        // Aggiorno info su ultima partita
+        private void setLastPlayed(String word, boolean won) {
+            lastPlayed = word;
+            lastPlayedWon = won;
+        }
+    
+        // Controlla se lo user ha una partita in corso non finita per la parola word
+        // Restituisce il numero di tentativi già effettuati in caso positivo, -1 altrimenti
+        private int hasUnfinishedMatch (String word) {
+            if (word.equals(session.getWord()) && (session.getAttemptsNumber()<12)) return session.getAttemptsNumber();
+            else return -1;
+        }        
+    }
+
+
+    // Classe per i dati legati ad una sessione di gioco lasciata incompleta di un utente
+    private class MatchSession {
+        // Classe per tenere traccia della sessione di un utente
+            String word;
+            private List<Attempt> attempts;
+    
+            // Costruttore
+            private MatchSession() {
+                word = null;
+                attempts = Collections.synchronizedList(new ArrayList<Attempt>(12));
+            }
+    
+            // Aggiungo un tentativo
+            private boolean addCouple(String guess, String hint) {
+                if (attempts.size()>=12) return false;
+                else {
+                    Attempt n = new Attempt(guess, hint);
+                    return attempts.add(n);
+                }
+            }
+    
+            // Ottengo numero di tentativi già fatti
+            private int getAttemptsNumber () {
+                return attempts.size();
+            }
+    
+            // Restituisce stringa descrivente i tentativi effettuati
+            private String getAttempts () {
+                String tries = new String();
+                for (Attempt a : attempts) {
+                    tries = tries.concat(a.word+" ").concat(a.hint+" ");  
+                }
+                return tries;
+            }
+
+            // Restituisce la parola relativa alla sessione
+            private String getWord () {
+                return word;
+            }
+
+            // Imposto parola relativa alla sessione nuova
+            private void setNewWord (String w) {
+                word = w;
+                attempts.clear();
+            }
+    
+            // Coppia parola-suggerimento
+            private class Attempt {
+                String word;
+                String hint;
+    
+                public Attempt(String w, String h) {
+                    word = w;
+                    hint = h;
+                }
+    
+            }
+    
     }
 
 }

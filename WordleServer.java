@@ -22,10 +22,13 @@ import java.util.concurrent.TimeUnit;
 
 public class WordleServer {
 	private int port;
+	private int udpPort;
 	private int maxThreads;
 	private long wordLapse;
 	private ServerSocketChannel welcomeSocket;
-	Timestamp wordExtraction;
+	private DatagramSocket udpSocket;
+	InetAddress multicastGroup;
+	private Timestamp wordExtraction;
 	private String word;
 
 	public WordleServer() {
@@ -43,15 +46,17 @@ public class WordleServer {
 			param = Files.readAllLines(configFile);
 			// dalla lista ricavo il numero di porta
 			port = Integer.parseInt(param.get(0));
+			// il numero di porta UDP
+			udpPort = Integer.parseInt(param.get(1));
 			// il numero massimo di thread
-			maxThreads = Integer.parseInt(param.get(1));
+			maxThreads = Integer.parseInt(param.get(2));
 			// ogni quanto cambiare parola in millisecondi
-			wordLapse = TimeUnit.HOURS.toMillis(Long.parseLong(param.get(2)));
+			wordLapse = TimeUnit.HOURS.toMillis(Long.parseLong(param.get(3)));
 			// se sono specificate anche parola e tempo di estrazione di questa
-			if (param.size()>3) {
-				word = param.get(3);
+			if (param.size()>4) {
+				word = param.get(4);
 				wordExtraction = new Timestamp(0);
-				wordExtraction.setTime(Long.parseLong(param.get(4)));
+				wordExtraction.setTime(Long.parseLong(param.get(5)));
 			}
 			else extractWord();
 		} catch (IOException e) {
@@ -65,6 +70,9 @@ public class WordleServer {
 		// Creo shutdown hook
 		Thread sdHook = new Thread(()-> closeServer());
 		Runtime.getRuntime().addShutdownHook(sdHook);
+		// Creo socket UDP per gruppo multicast
+		udpSocket = new DatagramSocket();
+		multicastGroup = InetAddress.getByName("225.0.0.0");
 		// Creo la socket di ascolto passiva e la collego
 		welcomeSocket = ServerSocketChannel.open();
 		InetSocketAddress addr = new InetSocketAddress("localhost", port); // TEST
@@ -115,11 +123,10 @@ public class WordleServer {
 						reqCode = Integer.parseInt(new String(code,StandardCharsets.UTF_8));
 						System.out.println(reqCode); // TEST
 						// A seconda del codice leggo ulteriori byte
-						//if (reqCode==1 || reqCode==5 || reqCode==6 || reqCode == 7){
+						//if (reqCode==1 || reqCode==5 || reqCode==6 || reqCode == 7){ //teST
 							byte [] guessArr = new byte[req.remaining()];
 							req.get(guessArr);
 							opArg = new String(guessArr, StandardCharsets.UTF_8);
-							System.out.println(opArg); //TEST
 						//}
 					}
 
@@ -176,19 +183,21 @@ public class WordleServer {
 		try {
 			List <String> lines = Files.readAllLines(p, StandardCharsets.UTF_8);
 			// Se config non aveva questi parametri : Append
-			if (lines.size()<=3) {
+			if (lines.size()<=4) {
 				String toAppend = String.format("%s\n%s", word, Long.toString(wordExtraction.getTime()));
 				Files.write(p, toAppend.getBytes(), StandardOpenOption.APPEND);
 			}
 			// Se già ne aveva dall'avvio precedente li sostituisco
 			else {
-				lines.set(3, word);
-				lines.set(4, Long.toString(wordExtraction.getTime()));
+				lines.set(4, word);
+				lines.set(5, Long.toString(wordExtraction.getTime()));
 				Files.write(p, lines, StandardCharsets.UTF_8);
 			}
 			// Serializzo database
 			Database usersDB = Database.getDB();
 			usersDB.serializeDB();
+			// Chiudo socket udp
+			udpSocket.close();
 		} 
 		catch (IOException e) {
 			e.printStackTrace();
@@ -221,7 +230,7 @@ public class WordleServer {
 					//TO-DO: Stats
 					break;
 				case 4:
-					//TO-DO: Share
+					shareUserMatch();
 					break;
 				// Invio ad un utente le sue statistiche
 				case 5:
@@ -239,6 +248,10 @@ public class WordleServer {
 				case 8:
 					hasPlayed();
 					break;
+				// Controllo se lo user ha dei tentativi in sospeso
+				case 9:
+					hasPending();
+					break;
 			}
 	
 		}
@@ -251,7 +264,7 @@ public class WordleServer {
 		}
 	
 		// Controllo se un giocatore identificato da user ha già giocato per la parola corrente
-		public void hasPlayed() {
+		public void hasPlayed () {
 			try {
 				// Chiedo al DB l'ultima parola per cui il client (identificato da username) ha giocato
 				Database usersDB = Database.getDB();
@@ -263,7 +276,6 @@ public class WordleServer {
 				else if (!lastWordGuess.equals(word)) code = 1;
 				// Invio risposta al giocatore
 				ByteBuffer out = ByteBuffer.allocate(32);
-				System.out.println(code);
 				out.putInt(code);
 				out.flip();
 				client.write(out);
@@ -273,11 +285,39 @@ public class WordleServer {
 			}
 		}
 
-		// Aggiorno ultima parola per cui uno user ha giocato
-		public void updateLastTimePlayed () {
-			System.out.println(parameter); //TO-DO
+		// Controllo se user ha una partita avviata per la parola corrente
+		public void hasPending () {
+			// Chiedo al DB se l'utente ha già dei tentativi per la parola attuale
 			Database usersDB = Database.getDB();
-			usersDB.updateLastPlayed(parameter,word);
+			int triesMade = usersDB.hasPending(parameter, word);
+			if(triesMade!=-1) System.out.println(usersDB.getAttemptString(parameter)); //TEST
+			// Invio a utente la risposta
+			ByteBuffer out = ByteBuffer.allocate(4);
+			System.out.println("Already tried "+triesMade+" times"); //TEST
+			out.putInt(triesMade);
+			out.flip();
+			try {
+				client.write(out);
+				// Se ci sono stati dei tentativi li invio, ognuno seguito dal suggerimento relativo
+				if (triesMade!=-1) {
+					String tries = usersDB.getAttemptString(parameter);
+					out = ByteBuffer.wrap(tries.getBytes());
+					client.write(out);
+					// TO-DO
+				}
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+
+		// Aggiorno ultima parola per cui uno user ha giocato e esito partita
+		public void updateLastTimePlayed () {
+			String [] pars = parameter.split(" ");
+			String username = pars[0];
+			String result = pars[1];
+			Database usersDB = Database.getDB();
+			boolean won = (Integer.valueOf(result)==0);
+			usersDB.updateLastPlayed(username, word, won);
 			sendAck(0);
 		}
 
@@ -293,14 +333,20 @@ public class WordleServer {
 		}
 
 		// Gestisce gioco per un client
-		// Il parametro extra è qui la guess del client
+		// Il parametro extra contiene username e guess del client
 		private void play () {
 			// Genero hint 
-			char [] hint = generateHint(parameter);
+			String [] pars = parameter.split(" ");
+			String username = pars[0];
+			String guess = pars[1];
+			char [] hint = generateHint(guess);
 			ByteBuffer out = ByteBuffer.wrap(new String(hint).getBytes());
 			// Invio Hint al client
 			try {
 				client.write(out);
+				// Registro tentativo nel database
+				Database db = Database.getDB();
+				db.addAttempt(username, guess, String.valueOf(hint), word);
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
@@ -342,6 +388,21 @@ public class WordleServer {
 			return hint;	
 		}
 
+		// Condivido su gruppo multicast l'esito dell'ultima partita dello user
+		private void shareUserMatch() {
+			// Recupero da DB esito dell'ultima partita dello user
+			Database usersDB = Database.getDB();
+			String lastMatch = usersDB.getLastMatchResult(parameter);
+			// Invio su gruppo multicast
+			byte [] buffer = lastMatch.getBytes();
+			DatagramPacket pkg = new DatagramPacket(buffer, buffer.length,multicastGroup,udpPort);
+			try {
+				udpSocket.send(pkg);
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+
 		// Controlla se un tentativo di un utente è presente nel vocabolario
 		private boolean isInVocab (String guess) {
 			boolean ans = false;
@@ -368,8 +429,6 @@ public class WordleServer {
 
 		// Invio int ret come ack a client
 		private void sendAck(int ret) {
-			//String toSend = "0";
-			//ByteBuffer ack = ByteBuffer.wrap(toSend.getBytes());
 			ByteBuffer ack = ByteBuffer.allocate(4);
 			ack.putInt(ret);
 			ack.flip();

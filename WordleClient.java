@@ -7,6 +7,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.io.*;
 
@@ -16,14 +18,19 @@ public class WordleClient {
 	public Console c;
 	// Si connette al serve con socket TCP
 	private SocketChannel clientSocket;
-	public static int port;
+	private static int port;
 	private InetSocketAddress host;
+	// Porta UDP per gruppo multicast
+	private static int udpPort;
 	// Due stream per comunicare con server
 	private ByteBuffer out;
 	private ByteBuffer in;
+	// Info utente
 	private boolean login;
 	private String user;
-	
+	// Notifiche
+	private List<String> notifs = Collections.synchronizedList(new ArrayList<String>());
+
 	// Metodo costruttore
 	public WordleClient() throws Exception {
 		// Console per interfaccia con lo user
@@ -44,8 +51,10 @@ public class WordleClient {
 		List<String> param;
 		try {
 			param = Files.readAllLines(configFile);
-			// dalla lista ricavo il numero di porta
+			// dalla lista ricavo il numero di porta per connessione TCP
 			port = Integer.parseInt(param.get(0));
+			// E il numero di porta per connessione UDP
+			udpPort = Integer.parseInt(param.get(1));
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -56,41 +65,55 @@ public class WordleClient {
 		boolean exit = false;
 		int op;
 		while (!exit ){
-			String ans = c.readLine("Ciao! Scrivi:\n1 -Login\n2 -Signup\n3 -Play\n4 -Condividi score\n5 -Mostrami le mie statistiche\n6 -Logout\n7 -close\n");
-			op = Integer.parseInt(ans);
-			switch (op) {
-				case 1:
-					if (!login) getLogin();
-					else System.out.print("Sei già connesso!\n");
-					if (login) System.out.print("Connesso con successo!\n");
-					break;
-				case 2:
-					if (!login) getSignup();
-					else System.out.print("Hai già effettuato l'accesso con un account!\n");
-					if (login) System.out.print("Registrato con successo! Sei ancora connesso!\n");
-					break;
-				case 3:
-					if (login) play();
-					else System.out.print("Accedi o registrati prima di giocare!");
-					break;
-				case 4:
-					// TO-DO: share
-					break;
-				case 5:
-					if (login) showMyStats();
-					else System.out.print("Accedi per vedere le tue statistiche!");
-					break;
-				case 6:
-					login = false;
-					break;
-				case 7:
-					login = false;
-					exit = true;
-					break;
-				default:
-					System.out.print("Richiesta non supportata!");
-					break;
+			String ans = c.readLine("Ciao! Scrivi:\n1 -Login\n2 -Signup\n3 -Play\n4 -Condividi risultato ultima partita\n5 -Mostrami le mie statistiche\n6 -Mostrami le notifiche ricevute\n7 -Logout\n8 -close\n");
+			try	{
+				op = Integer.parseInt(ans);
+				switch (op) {
+					case 1:
+						if (!login) getLogin();
+						else System.out.println("Sei già connesso!");
+						if (login) {
+							System.out.println("Connesso con successo!");
+							joinMulticastGroup();
+						}
+						break;
+					case 2:
+						if (!login) getSignup();
+						else System.out.println("Hai già effettuato l'accesso con un account!");
+						if (login) {
+							System.out.println("Registrato con successo! Sei ancora connesso!");
+							joinMulticastGroup();
+						}
+						break;
+					case 3:
+						if (login) play();
+						else System.out.println("Accedi o registrati prima di giocare!");
+						break;
+					case 4:
+						if (login) share();
+						else System.out.println("Devi prima accedere!");
+						break;
+					case 5:
+						if (login) showMyStats();
+						else System.out.println("Accedi per vedere le tue statistiche!");
+						break;
+					case 6:
+						if (login) printNotifs();
+						else System.out.println("Devi accedere per ricevere notifiche!");
+						break;
+					case 7:
+						login = false;
+						break;
+					case 8:
+						login = false;
+						exit = true;
+						break;
+					default:
+						System.out.println("Richiesta non supportata!");
+						break;
+				}
 			}
+			catch (NumberFormatException e) {System.out.println("Richiesta non supportata!");}
 		}
 	}
 	
@@ -191,6 +214,13 @@ public class WordleClient {
 		return exit;
 	}
 	
+	// Mi unisco al gruppo di multicast per ricevere notifiche
+	private void joinMulticastGroup() {
+		clientUDP getNotifs = new clientUDP();
+		Thread udpListen = new Thread(getNotifs);
+		udpListen.start();
+	}
+
 	// Avvia una partita di wordle
 	private void play() {
 		try {
@@ -204,9 +234,12 @@ public class WordleClient {
 		if (hasPlayed()) {
 			System.out.println("Hai già giocato per questa parola!");
 		}
-		else {		
-			// 12 tentativi
+		else {
+			// Controllo se ho già effettuato dei tentativi
+			int alreadyMade = hasPending();
+			// 12 tentativi - quelli già effettuati
 			int chances = 12;
+			if (alreadyMade>0) chances = chances-alreadyMade;
 			boolean won = false;
 			int outcome;
 			while (chances!=0 && !won) {
@@ -227,7 +260,6 @@ public class WordleClient {
 					case 1:
 						chances--;
 						won=true;
-						System.out.println("\u001B[32m"+guess+"\u001B[0m");
 						System.out.println("Hai indovinato in "+(12-chances)+" tentativi!");
 						break;
 					// Non nel vocabolario
@@ -268,6 +300,36 @@ public class WordleClient {
 		return played;
 	}
 
+	// Controllo se ho dei tentativi in sospeso per la sessione
+	private int hasPending () {
+		String toSend= "9"+user;
+		out = ByteBuffer.wrap(toSend.getBytes());
+		try {
+			clientSocket.write(out);
+			// Leggo risposta
+			in = ByteBuffer.allocate(4);
+			clientSocket.read(in);
+			in.flip();
+			int tried = in.getInt();
+			// Se ce ne sono leggo i tentativi già fatti
+			if (tried != -1) {
+				in = ByteBuffer.allocate(tried*22);
+				clientSocket.read(in);
+				in.flip();
+				String attempts = StandardCharsets.UTF_8.decode(in).toString();
+				String [] attArr = attempts.split(" ");
+				// Li stampo a schermo
+				for (int i=0;i<tried*2;i=i+2) {
+					printColoredHint(attArr[i+1], attArr[i]);
+				}
+			}
+			return tried;
+		} catch (IOException e) {
+			e.printStackTrace();
+			return -1;
+		}
+	}
+
 	// Invia un tentativo al server
 	// Restituisce 0 in caso di errore, 1 in caso di successo, 
 	// 2 se la parola non è contemplata, 3 in caso di problemi col server
@@ -275,41 +337,25 @@ public class WordleClient {
 		int outcome = 0;
 		try {
 			// Scrivo richiesta di gioco con guess al server
-			String toSend= "1"+guess;
+			String toSend= "1"+user+" "+guess;
 			out = ByteBuffer.wrap(toSend.getBytes());
-			int sent = clientSocket.write(out);
+			clientSocket.write(out);
 			// Leggo risposta
 			in = ByteBuffer.allocate(32);
-			int received = clientSocket.read(in);
+			clientSocket.read(in);
 			in.flip();
 			String hint = StandardCharsets.UTF_8.decode(in).toString();
 			// Se il tentativo è corretto
-			if (hint.equals("gggggggggg")) outcome = 1;
+			if (hint.equals("gggggggggg")) {
+				printColoredHint(hint, guess);
+				outcome = 1;
+			}
 			// Se il tentativo è valido
 			else if (hint.equals("notvalid")) outcome = 2;
 			else {
-				final String ANSI_WHITE = "\u001B[37m";
-				final String ANSI_YELLOW = "\u001B[33m";
-				final String ANSI_GREEN = "\u001B[32m";
-				final String ANSI_RESET = "\u001B[0m";
+				printColoredHint(hint, guess);
 				outcome = 0;
-
-				for (int i=0;i<10;i++){
-					switch (hint.charAt(i)){
-						case 'w':
-							System.out.print(ANSI_WHITE+guess.charAt(i)+ANSI_RESET);
-							break;
-						case 'y':
-							System.out.print(ANSI_YELLOW+guess.charAt(i)+ANSI_RESET);
-							break;
-						case 'g':
-							System.out.print(ANSI_GREEN+guess.charAt(i)+ANSI_RESET);
-							break;
-					}
-				}
-				System.out.print("\n");
 			}
-			System.out.println(hint); //TEST
 		}
 		// Se il server non è raggiungibile
 		catch (IOException e) {
@@ -319,10 +365,33 @@ public class WordleClient {
 		return outcome;
 	}
 
+	// Stampa a schermo guess colorata come suggerito da hint
+	private void printColoredHint (String hint, String guess) {
+		final String ANSI_WHITE = "\u001B[37m";
+		final String ANSI_YELLOW = "\u001B[33m";
+		final String ANSI_GREEN = "\u001B[32m";
+		final String ANSI_RESET = "\u001B[0m";
+
+		for (int i=0;i<10;i++){
+			switch (hint.charAt(i)){
+				case 'w':
+					System.out.print(ANSI_WHITE+guess.charAt(i)+ANSI_RESET);
+					break;
+				case 'y':
+					System.out.print(ANSI_YELLOW+guess.charAt(i)+ANSI_RESET);
+					break;
+				case 'g':
+					System.out.print(ANSI_GREEN+guess.charAt(i)+ANSI_RESET);
+					break;
+			}
+		}
+		System.out.print("\n");		
+	}
+
 	// Aggiorna informazioni sul giocatore dopo una partita
 	private void updatePlayerInfo (boolean won, int tries) {
-		// Aggiorno parola ultima partita
-		updateLastPlayed();
+		// Aggiorno ultima partita
+		updateLastPlayed(won);
 		getAck();
 		// Se la partita è stata vinta aggiorno il punteggio
 		if (won) updateScore(tries);
@@ -342,10 +411,11 @@ public class WordleClient {
 		}
 	}
 
-	// Chiedo al server di aggiornare l'ultima volta in cui si è giocato
-	private void updateLastPlayed () {
-		// Faccio richiesta di auth al server
-		String toSend= "6"+user;
+	// Chiedo al server di aggiornare l'ultima volta in cui si è giocato e l'esito della partita
+	private void updateLastPlayed (boolean won) {
+		String toSend;
+		if (won) toSend = "6"+user+" 0";
+		else toSend = "6"+user+" 1";
 		out = ByteBuffer.wrap(toSend.getBytes());
 		try {
 			clientSocket.write(out);
@@ -355,6 +425,32 @@ public class WordleClient {
 		}
 	}
 	
+	// Chiedo al server di condividere l'esito della mia ultima partita in gruppo di multicast
+	private void share() {
+			try {
+				// Se non è già aperta apro connessione
+				if (clientSocket==null) clientSocket = SocketChannel.open(host);
+				// Invio richiesta di condivisione
+				String toSend= "4"+user;
+				out = ByteBuffer.wrap(toSend.getBytes());
+				clientSocket.write(out);
+				// TO-DO: getAck
+			}
+			catch (IOException e) {
+				e.printStackTrace();
+			}
+
+	}
+
+	// Stampo le notifiche ricevute dal gruppo di multicast
+	private void printNotifs(){
+		System.out.println("Hai ricevuto "+notifs.size()+" notifiche");
+		for (int i=0; i<notifs.size();i++) {
+			System.out.println(notifs.get(i));
+			notifs.remove(i);
+		}
+	}
+
 	// Richiede e stampa statistiche dell'utente
 	private void showMyStats () {
 		try {
@@ -390,6 +486,39 @@ public class WordleClient {
 			e.printStackTrace();
 		}
 		return ack;
+	}
+
+	// Classe interna per gestire gruppo broadcast UDP
+	private class clientUDP implements Runnable {
+		private MulticastSocket socket = null;
+		private byte [] buf = new byte[256];
+	
+		public clientUDP() {}
+
+		@Override
+		public void run() {
+			try {
+				// Mi unisco al gruppo
+				socket = new MulticastSocket(udpPort);
+				InetAddress group = InetAddress.getByName("225.0.0.0");
+				socket.joinGroup(group);
+				// Rimango in ascolto finchè l'utente è loggato
+				while (login) {
+					DatagramPacket pkg = new DatagramPacket(buf, buf.length);
+					socket.receive(pkg);
+					String received = new String(pkg.getData(), 0, pkg.getLength());
+					notifs.add(received);
+				}
+				socket.leaveGroup(group);
+				socket.close();
+				notifs.clear();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+
+
+
 	}
 
 }
