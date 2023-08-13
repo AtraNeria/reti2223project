@@ -3,6 +3,10 @@ import java.io.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.rmi.AlreadyBoundException;
+import java.rmi.RemoteException;
+import java.rmi.registry.LocateRegistry;
+import java.rmi.registry.Registry;
 import java.sql.Timestamp;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
@@ -30,10 +34,14 @@ public class WordleServer {
 	InetAddress multicastGroup;
 	private Timestamp wordExtraction;
 	private String word;
+	private List<RankingEntry> userRank;
+	public RemoteWordleServer rmi;
 
 	public WordleServer() {
 		// Ottiene le info per configurare il server dal file apposito
 		this.getConfig();
+		Database usersDB = Database.getDB();
+		userRank = usersDB.populateRanking();
 	}
 
 	// Metodo di inizializzazione
@@ -66,6 +74,16 @@ public class WordleServer {
 
 	// Avvio il server, che entra in ascolto
 	public void startServer() throws IOException {
+
+		// Avvio server RMI
+		rmi = new RemoteWordleServer();
+		Registry reg = LocateRegistry.createRegistry(2020);
+        try {
+			reg.bind("RemoteWordleService", rmi);
+		} catch (AlreadyBoundException e) {
+			e.printStackTrace();
+		}
+		rmi.updateTop3(userRank);
 
 		// Creo shutdown hook
 		Thread sdHook = new Thread(()-> closeServer());
@@ -329,7 +347,32 @@ public class WordleServer {
 			String tries = pars[1];
 			// Aggiorno database
 			Database usersDB = Database.getDB();
+			float oldScore = usersDB.getScore(username);
 			usersDB.updateScore(username, Integer.valueOf(tries));
+			// Controllo se top3 viene modificata
+			float newScore = usersDB.getScore(username);
+			boolean modified = false;
+			if (userRank.size()>=3) {
+				for (int i=0; i<3; i++)
+					if (userRank.get(i).score < newScore) modified = true;
+			}
+			else modified = true;
+			// IGNORES FIRST SERVER START
+			// Aggiorno ranking
+			if (oldScore == 0) {
+				userRank.add(new RankingEntry(username,newScore));}
+			else {
+				int ind = userRank.indexOf(new RankingEntry(username,oldScore));
+				userRank.get(ind).score = newScore;
+			}
+			userRank.sort(null);
+			// Se la top3 è stata modificata aggiorno server remoto che eseguirà callback
+			if (modified)
+				try {
+					rmi.updateTop3(userRank);
+				} catch (RemoteException e) {
+					e.printStackTrace();
+				}
 		}
 
 		// Gestisce gioco per un client
@@ -440,6 +483,5 @@ public class WordleServer {
 		}
 
 	}
-
 
 }

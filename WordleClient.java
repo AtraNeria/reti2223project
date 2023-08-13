@@ -5,8 +5,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
+import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -30,6 +32,7 @@ public class WordleClient {
 	private String user;
 	// Notifiche
 	private List<String> notifs = Collections.synchronizedList(new ArrayList<String>());
+	private List<RankingEntry> leaderboard = Collections.synchronizedList(new ArrayList<RankingEntry>());
 
 	// Metodo costruttore
 	public WordleClient() throws Exception {
@@ -65,7 +68,7 @@ public class WordleClient {
 		boolean exit = false;
 		int op;
 		while (!exit ){
-			String ans = c.readLine("Ciao! Scrivi:\n1 -Login\n2 -Signup\n3 -Play\n4 -Condividi risultato ultima partita\n5 -Mostrami le mie statistiche\n6 -Mostrami le notifiche ricevute\n7 -Logout\n8 -close\n");
+			String ans = c.readLine("Ciao! Scrivi:\n1 -Login\n2 -Signup\n3 -Play\n4 -Condividi risultato ultima partita\n5 -Mostrami le mie statistiche\n6 -Mostrami le notifiche ricevute\n7 -Mostrami la classifica\n8 -Logout\n9 -close\n");
 			try	{
 				op = Integer.parseInt(ans);
 				switch (op) {
@@ -102,9 +105,13 @@ public class WordleClient {
 						else System.out.println("Devi accedere per ricevere notifiche!");
 						break;
 					case 7:
-						login = false;
+						if (login) printLeaderboard ();
+						else System.out.println("Devi accedere per visualizzare la classifica!");
 						break;
 					case 8:
+						login = false;
+						break;
+					case 9:
 						login = false;
 						exit = true;
 						break;
@@ -147,6 +154,7 @@ public class WordleClient {
 					System.out.println("Login avvenuto con successo!");
 					user = name;
 					login = true;
+					getLeaderboardUpdates(remoteServer);
 					break;
 				case 1:
 					System.out.println("Password errata.");
@@ -205,7 +213,10 @@ public class WordleClient {
 			exit = remoteServer.signUp(name, password);
 			if (!exit) System.out.println("Username già in utilizzo\n");
 			// Se mi registro con successo rimango collegato
-			else login = true;
+			else {
+				login = true;
+				getLeaderboardUpdates(remoteServer);			
+			}
 		}
 		catch (Exception e) {
 			e.printStackTrace();
@@ -214,6 +225,13 @@ public class WordleClient {
 		return exit;
 	}
 	
+	// Mi registro per ottenere dal server aggiornamenti sul ranking
+	private void getLeaderboardUpdates (RemoteServerInterface remoteServer) {
+		waitForCallback getTop3 = new waitForCallback(remoteServer);
+		Thread callbackWait = new Thread(getTop3);
+		callbackWait.start();
+	}
+
 	// Mi unisco al gruppo di multicast per ricevere notifiche
 	private void joinMulticastGroup() {
 		clientUDP getNotifs = new clientUDP();
@@ -319,6 +337,7 @@ public class WordleClient {
 				String attempts = StandardCharsets.UTF_8.decode(in).toString();
 				String [] attArr = attempts.split(" ");
 				// Li stampo a schermo
+				System.out.println("Hai già provato:");
 				for (int i=0;i<tried*2;i=i+2) {
 					printColoredHint(attArr[i+1], attArr[i]);
 				}
@@ -434,7 +453,6 @@ public class WordleClient {
 				String toSend= "4"+user;
 				out = ByteBuffer.wrap(toSend.getBytes());
 				clientSocket.write(out);
-				// TO-DO: getAck
 			}
 			catch (IOException e) {
 				e.printStackTrace();
@@ -448,6 +466,14 @@ public class WordleClient {
 		for (int i=0; i<notifs.size();i++) {
 			System.out.println(notifs.get(i));
 			notifs.remove(i);
+		}
+	}
+
+	// Stampo la top3
+	private void printLeaderboard () {
+		int s = leaderboard.size();
+		for (int i=0; i<s; i++) {
+			System.out.println(i+") "+leaderboard.get(i).username+" : "+leaderboard.get(i).score);
 		}
 	}
 
@@ -519,6 +545,30 @@ public class WordleClient {
 
 
 
+	}
+
+	// Classe interna per gestire notifiche callback
+	private class waitForCallback implements Runnable {
+
+		RemoteServerInterface rmi;
+		
+		public waitForCallback (RemoteServerInterface remoteServer) {
+			rmi = remoteServer;
+		}
+
+		@Override
+		public void run() {
+			try {
+				ClientRemoteInterface callback = new WordleClientRemote(leaderboard);
+				ClientRemoteInterface stub = (ClientRemoteInterface) UnicastRemoteObject.exportObject(callback, 0);
+				rmi.registerForCallback(stub);
+				while (login) {}
+				rmi.unregisterForCallback(stub);
+			} catch (RemoteException e) {
+				e.printStackTrace();
+			}
+	
+		}
 	}
 
 }

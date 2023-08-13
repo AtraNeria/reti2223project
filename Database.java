@@ -70,6 +70,11 @@ public class Database {
         }
 	}
 
+    // Restituisce numero di utenti
+    public int getDbSize () {
+        return usersDB.size();
+    }
+
     // Aggiunge user a DB
     public boolean addUser (String username, char[] password) {
 		boolean ex = true;
@@ -114,6 +119,11 @@ public class Database {
         u.session.addCouple(guess, hint);
     }
 
+    // Restituisce punteggio di user
+    public float getScore (String username) {
+       return usersDB.get(username).score;
+    }
+
     // Aggiorno last played word per username e totale partite giocate
 	public void updateLastPlayed (String username, String word, boolean won) {
 		UserEntry userInfo = usersDB.get(username);
@@ -147,13 +157,26 @@ public class Database {
         return lastMatch;
     }
 
+    // Popolo lista di classifica degli user
+    public List<RankingEntry> populateRanking () {
+        List <RankingEntry> ranks = Collections.synchronizedList(new ArrayList<RankingEntry>());
+        for (String user : usersDB.keySet()) {
+            // Aggiungo solo gli user che hanno almeno vinto una partita
+            float userScore = usersDB.get(user).score;
+            if (userScore!=0) ranks.add(new RankingEntry(user, userScore));
+        }
+        // Ordino gli users
+        ranks.sort(null);
+        return ranks;
+    }
 
+    
 
     // Classe interna per dati utente
     private class UserEntry {
 
         char[] password;
-        int score;
+        float score;
         int gamesWon;
         int totGamesPlayed;
         int totTries;
