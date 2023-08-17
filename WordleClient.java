@@ -12,6 +12,7 @@ import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.io.*;
 
 public class WordleClient {
@@ -28,11 +29,15 @@ public class WordleClient {
 	private ByteBuffer out;
 	private ByteBuffer in;
 	// Info utente
-	private boolean login;
+	private AtomicBoolean login;
 	private String user;
 	// Notifiche
 	private List<String> notifs = Collections.synchronizedList(new ArrayList<String>());
 	private List<RankingEntry> leaderboard = Collections.synchronizedList(new ArrayList<RankingEntry>());
+	RemoteServerInterface remoteServer;
+	// Threads
+	Thread udpListen;
+	Thread callbackWait;
 
 	// Metodo costruttore
 	public WordleClient() throws Exception {
@@ -43,7 +48,7 @@ public class WordleClient {
 		host = new InetSocketAddress("localhost", port);
 		System.out.println(host);	// TEST
 		// login non ancora effettuato
-		login = false;
+		login = new AtomicBoolean();
 	}
 
 	// Configurazione
@@ -67,52 +72,60 @@ public class WordleClient {
 	public void greet() {
 		boolean exit = false;
 		int op;
-		while (!exit ){
+		// Creo shutdown hook
+		Thread sdHook = new Thread(()-> shutdown());
+		Runtime.getRuntime().addShutdownHook(sdHook);
+
+		while (!exit){
 			String ans = c.readLine("Ciao! Scrivi:\n1 -Login\n2 -Signup\n3 -Play\n4 -Condividi risultato ultima partita\n5 -Mostrami le mie statistiche\n6 -Mostrami le notifiche ricevute\n7 -Mostrami la classifica\n8 -Logout\n9 -close\n");
 			try	{
 				op = Integer.parseInt(ans);
 				switch (op) {
 					case 1:
-						if (!login) getLogin();
-						else System.out.println("Sei già connesso!");
-						if (login) {
-							System.out.println("Connesso con successo!");
-							joinMulticastGroup();
+						if (!login.get()) {
+							getLogin();
+							if (login.get()) {
+								System.out.println("Connesso con successo!");
+								joinMulticastGroup();
+							}
 						}
+						else System.out.println("Sei già connesso!");
 						break;
 					case 2:
-						if (!login) getSignup();
-						else System.out.println("Hai già effettuato l'accesso con un account!");
-						if (login) {
-							System.out.println("Registrato con successo! Sei ancora connesso!");
-							joinMulticastGroup();
+						if (!login.get()){
+							getSignup();
+							if (login.get()) {
+								System.out.println("Registrato con successo! Sei ancora connesso!");
+								joinMulticastGroup();
+							}
 						}
+						else System.out.println("Hai già effettuato l'accesso con un account!");
 						break;
 					case 3:
-						if (login) play();
+						if (login.get()) play();
 						else System.out.println("Accedi o registrati prima di giocare!");
 						break;
 					case 4:
-						if (login) share();
+						if (login.get()) share();
 						else System.out.println("Devi prima accedere!");
 						break;
 					case 5:
-						if (login) showMyStats();
+						if (login.get()) showMyStats();
 						else System.out.println("Accedi per vedere le tue statistiche!");
 						break;
 					case 6:
-						if (login) printNotifs();
+						if (login.get()) printNotifs();
 						else System.out.println("Devi accedere per ricevere notifiche!");
 						break;
 					case 7:
-						if (login) printLeaderboard ();
+						if (login.get()) printLeaderboard ();
 						else System.out.println("Devi accedere per visualizzare la classifica!");
 						break;
 					case 8:
-						login = false;
+						if (login.get()) logout();
 						break;
 					case 9:
-						login = false;
+						if (login.get()) logout();
 						exit = true;
 						break;
 					default:
@@ -122,6 +135,7 @@ public class WordleClient {
 			}
 			catch (NumberFormatException e) {System.out.println("Richiesta non supportata!");}
 		}
+		System.exit(0);
 	}
 	
 	// Chiede username e password e controlla che siano corrette, altrimenti segnala errore
@@ -147,14 +161,15 @@ public class WordleClient {
 			int rc;
 			//connetto al server remoto
             Registry reg = LocateRegistry.getRegistry(2020);
-			RemoteServerInterface remoteServer = (RemoteServerInterface) reg.lookup("RemoteWordleService");
+			remoteServer = (RemoteServerInterface) reg.lookup("RemoteWordleService");
 			rc = remoteServer.login(name, password);
 			switch (rc) {
 				case 0:
 					System.out.println("Login avvenuto con successo!");
 					user = name;
-					login = true;
+					login.set(true);
 					getLeaderboardUpdates(remoteServer);
+					clientSocket = SocketChannel.open(host);
 					break;
 				case 1:
 					System.out.println("Password errata.");
@@ -167,8 +182,7 @@ public class WordleClient {
 		catch (Exception e) {
 			e.printStackTrace();
 		}
-		if (login) user = name;
-		return login;
+		return login.get();
 	}
 	
 	// Chiede credenziale con cui registrarsi
@@ -209,13 +223,14 @@ public class WordleClient {
 		try {
 			// Connetto al server remoto
 			Registry reg = LocateRegistry.getRegistry(2020);
-			RemoteServerInterface remoteServer = (RemoteServerInterface) reg.lookup("RemoteWordleService");
+			remoteServer = (RemoteServerInterface) reg.lookup("RemoteWordleService");
 			exit = remoteServer.signUp(name, password);
 			if (!exit) System.out.println("Username già in utilizzo\n");
 			// Se mi registro con successo rimango collegato
 			else {
-				login = true;
-				getLeaderboardUpdates(remoteServer);			
+				login.set(true);
+				getLeaderboardUpdates(remoteServer);
+				clientSocket = SocketChannel.open(host);			
 			}
 		}
 		catch (Exception e) {
@@ -227,27 +242,20 @@ public class WordleClient {
 	
 	// Mi registro per ottenere dal server aggiornamenti sul ranking
 	private void getLeaderboardUpdates (RemoteServerInterface remoteServer) {
-		waitForCallback getTop3 = new waitForCallback(remoteServer);
-		Thread callbackWait = new Thread(getTop3);
+		waitForCallback getTop3 = new waitForCallback(remoteServer, login);
+		callbackWait = new Thread(getTop3);
 		callbackWait.start();
 	}
 
 	// Mi unisco al gruppo di multicast per ricevere notifiche
 	private void joinMulticastGroup() {
-		clientUDP getNotifs = new clientUDP();
-		Thread udpListen = new Thread(getNotifs);
+		clientUDP getNotifs = new clientUDP(login);
+		udpListen = new Thread(getNotifs);
 		udpListen.start();
 	}
 
 	// Avvia una partita di wordle
 	private void play() {
-		try {
-			// Avvio della socket
-			clientSocket = SocketChannel.open(host);
-		}
-		catch (IOException e) {
-			System.err.println("Impossibile connettersi");
-		}
 		// Controllo se l'utente ha già giocato per questa parola
 		if (hasPlayed()) {
 			System.out.println("Hai già giocato per questa parola!");
@@ -447,8 +455,6 @@ public class WordleClient {
 	// Chiedo al server di condividere l'esito della mia ultima partita in gruppo di multicast
 	private void share() {
 			try {
-				// Se non è già aperta apro connessione
-				if (clientSocket==null) clientSocket = SocketChannel.open(host);
 				// Invio richiesta di condivisione
 				String toSend= "4"+user;
 				out = ByteBuffer.wrap(toSend.getBytes());
@@ -480,8 +486,6 @@ public class WordleClient {
 	// Richiede e stampa statistiche dell'utente
 	private void showMyStats () {
 		try {
-			// Se non è già aperta apro connessione
-			if (clientSocket==null) clientSocket = SocketChannel.open(host);
 			// Invio richiesta delle statistiche
 			String toSend= "5"+user;
 			out = ByteBuffer.wrap(toSend.getBytes());
@@ -514,12 +518,36 @@ public class WordleClient {
 		return ack;
 	}
 
+	// Esegue logout, chiude socket e esegue join dei thread
+	private void logout () {
+		login.set(false);
+		String toSend= "0";
+		try {
+			out = ByteBuffer.wrap(toSend.getBytes());
+			clientSocket.write(out);
+			clientSocket.close();
+			udpListen.join(15000);
+			callbackWait.join(15000);
+		} catch (IOException | InterruptedException e) {
+			e.printStackTrace();
+		}
+	}
+
+	// Chiusura del client in caso di sig
+	private void shutdown () {
+		if (login.get()) logout();
+		System.exit(0);
+	}
+
 	// Classe interna per gestire gruppo broadcast UDP
 	private class clientUDP implements Runnable {
 		private MulticastSocket socket = null;
 		private byte [] buf = new byte[256];
+		AtomicBoolean logged;
 	
-		public clientUDP() {}
+		public clientUDP(AtomicBoolean login) {
+			logged = login;
+		}
 
 		@Override
 		public void run() {
@@ -527,16 +555,19 @@ public class WordleClient {
 				// Mi unisco al gruppo
 				socket = new MulticastSocket(udpPort);
 				InetAddress group = InetAddress.getByName("225.0.0.0");
+				socket.setSoTimeout(10000);
 				socket.joinGroup(group);
 				// Rimango in ascolto finchè l'utente è loggato
-				while (login) {
-					DatagramPacket pkg = new DatagramPacket(buf, buf.length);
-					socket.receive(pkg);
-					String received = new String(pkg.getData(), 0, pkg.getLength());
-					notifs.add(received);
+				while (logged.get()) {
+					try {
+						DatagramPacket pkg = new DatagramPacket(buf, buf.length);
+						socket.receive(pkg);
+						String received = new String(pkg.getData(), 0, pkg.getLength());
+						notifs.add(received);
+					}
+					catch (SocketTimeoutException e) {continue;}
 				}
 				socket.leaveGroup(group);
-				socket.close();
 				notifs.clear();
 			} catch (IOException e) {
 				e.printStackTrace();
@@ -551,8 +582,10 @@ public class WordleClient {
 	private class waitForCallback implements Runnable {
 
 		RemoteServerInterface rmi;
+		AtomicBoolean logged;
 		
-		public waitForCallback (RemoteServerInterface remoteServer) {
+		public waitForCallback (RemoteServerInterface remoteServer, AtomicBoolean login) {
+			logged = login;
 			rmi = remoteServer;
 		}
 
@@ -562,12 +595,11 @@ public class WordleClient {
 				ClientRemoteInterface callback = new WordleClientRemote(leaderboard);
 				ClientRemoteInterface stub = (ClientRemoteInterface) UnicastRemoteObject.exportObject(callback, 0);
 				rmi.registerForCallback(stub);
-				while (login) {}
+				while (logged.get()) { continue; }
 				rmi.unregisterForCallback(stub);
 			} catch (RemoteException e) {
 				e.printStackTrace();
 			}
-	
 		}
 	}
 

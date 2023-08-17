@@ -32,6 +32,7 @@ public class WordleServer {
 	private ServerSocketChannel welcomeSocket;
 	private DatagramSocket udpSocket;
 	InetAddress multicastGroup;
+	private Selector selector;
 	private Timestamp wordExtraction;
 	private String word;
 	private List<RankingEntry> userRank;
@@ -98,7 +99,7 @@ public class WordleServer {
 		System.out.println(addr);	// TEST
 		welcomeSocket.configureBlocking(false);
 		// Istanzio il selector
-		Selector selector = Selector.open();
+		selector = Selector.open();
 		// Registro per operazioni accept
 		welcomeSocket.register(selector, SelectionKey.OP_ACCEPT);
 		// Avvio la threadpool che gestirà le richieste con un factory method
@@ -115,7 +116,7 @@ public class WordleServer {
 			// Iteratore sulle chiavi per monitorare i canali
 			Iterator<SelectionKey> iter = selKeys.iterator();
 
-			// TO-DO: close connecctions
+			// TO-DO: close connections
 			while (iter.hasNext()) {
 				SelectionKey currKey = iter.next();
 				// Se un client richiede connessione
@@ -123,7 +124,7 @@ public class WordleServer {
 					acceptConnection(selector, welcomeSocket);
 					System.out.println("Got connected"); // TEST
 				}
-
+				
 				// Se un client ha richiesta
 				if(currKey.isReadable()) {
 					SocketChannel chWithRequest = (SocketChannel)currKey.channel();
@@ -141,15 +142,22 @@ public class WordleServer {
 						reqCode = Integer.parseInt(new String(code,StandardCharsets.UTF_8));
 						System.out.println(reqCode); // TEST
 						// A seconda del codice leggo ulteriori byte
-						//if (reqCode==1 || reqCode==5 || reqCode==6 || reqCode == 7){ //teST
+						//if (reqCode==1 || reqCode==5 || reqCode==6 || reqCode == 7)//TEST
+						if (reqCode!=0)	{
 							byte [] guessArr = new byte[req.remaining()];
 							req.get(guessArr);
 							opArg = new String(guessArr, StandardCharsets.UTF_8);
-						//}
+						}
+					}
+					// Se client chiede logout gestisco chiusura socket
+					if (reqCode==0 || bytesRead==-1) {
+						currKey.cancel();
+						currKey.channel().close();
+						System.out.println("Socket closed");  //TEST
 					}
 
 					// Passo a thread worker
-					if (reqCode!=-1) {
+					else if (reqCode!=-1) {
 						WordleTask task = new WordleTask(chWithRequest, reqCode, opArg);
 						exec.submit(task);
 					}
@@ -216,6 +224,8 @@ public class WordleServer {
 			usersDB.serializeDB();
 			// Chiudo socket udp
 			udpSocket.close();
+			// Chiudo selettore
+			selector.close();
 		} 
 		catch (IOException e) {
 			e.printStackTrace();
@@ -321,7 +331,6 @@ public class WordleServer {
 					String tries = usersDB.getAttemptString(parameter);
 					out = ByteBuffer.wrap(tries.getBytes());
 					client.write(out);
-					// TO-DO
 				}
 			} catch (IOException e) {
 				e.printStackTrace();
