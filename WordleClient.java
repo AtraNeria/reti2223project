@@ -259,6 +259,7 @@ public class WordleClient {
 		// Controllo se l'utente ha già giocato per questa parola
 		if (hasPlayed()) {
 			System.out.println("Hai già giocato per questa parola!");
+			printTransl();
 		}
 		else {
 			// Controllo se ho già effettuato dei tentativi
@@ -301,6 +302,8 @@ public class WordleClient {
 			}
 			// Aggiorno info sull'utente
 			updatePlayerInfo(won, chances);
+			// Ottengo traduzione
+			printTransl();
 		}	
 	}
 
@@ -436,6 +439,7 @@ public class WordleClient {
 		catch (IOException e) {
 			e.printStackTrace();
 		}
+		getAck();
 	}
 
 	// Chiedo al server di aggiornare l'ultima volta in cui si è giocato e l'esito della partita
@@ -452,6 +456,37 @@ public class WordleClient {
 		}
 	}
 	
+	// Stampo la coppia della parola e la sua traduzione a schermo
+	private void printTransl () {
+		String toPrint = getTranslation();
+		if (toPrint.equals("Not concluded")) System.out.println("Errore, partita non conclusa!");
+		else {
+			String [] couple = toPrint.split(" ");
+			if (couple[1].contains("!")) System.out.println("Non è stato possibile trovare una traduzione per la parola \""+couple[0]+"\"");
+			else System.out.println("Parola: "+couple[0]+"\nTraduzione: "+couple[1]);
+		}
+	}
+
+	// Ottengo traduzione per la parola per cui ho appena giocato
+	private String getTranslation () {
+		try {
+			// Invio richiesta
+			String toSend= "2"+user;
+			out = ByteBuffer.wrap(toSend.getBytes());
+			clientSocket.write(out);
+			// Leggo e restituisco la risposta
+			in = ByteBuffer.allocate(22);
+			clientSocket.read(in);
+			in.flip();
+			String wordTranslation = StandardCharsets.UTF_8.decode(in).toString();
+			return wordTranslation;
+		}
+		catch (IOException e) {
+			e.printStackTrace();
+			return "Non disponibile!";
+		}
+}
+
 	// Chiedo al server di condividere l'esito della mia ultima partita in gruppo di multicast
 	private void share() {
 			try {

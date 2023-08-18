@@ -35,6 +35,7 @@ public class WordleServer {
 	private Selector selector;
 	private Timestamp wordExtraction;
 	private String word;
+	private String translation;
 	private List<RankingEntry> userRank;
 	public RemoteWordleServer rmi;
 
@@ -61,11 +62,12 @@ public class WordleServer {
 			maxThreads = Integer.parseInt(param.get(2));
 			// ogni quanto cambiare parola in millisecondi
 			wordLapse = TimeUnit.HOURS.toMillis(Long.parseLong(param.get(3)));
-			// se sono specificate anche parola e tempo di estrazione di questa
+			// se sono specificate anche parola, tempo di estrazione di questa e traduzione
 			if (param.size()>4) {
 				word = param.get(4);
 				wordExtraction = new Timestamp(0);
 				wordExtraction.setTime(Long.parseLong(param.get(5)));
+				translation = param.get(6);
 			}
 			else extractWord();
 		} catch (IOException e) {
@@ -116,7 +118,6 @@ public class WordleServer {
 			// Iteratore sulle chiavi per monitorare i canali
 			Iterator<SelectionKey> iter = selKeys.iterator();
 
-			// TO-DO: close connections
 			while (iter.hasNext()) {
 				SelectionKey currKey = iter.next();
 				// Se un client richiede connessione
@@ -141,8 +142,6 @@ public class WordleServer {
 						req.get(code,0,1);
 						reqCode = Integer.parseInt(new String(code,StandardCharsets.UTF_8));
 						System.out.println(reqCode); // TEST
-						// A seconda del codice leggo ulteriori byte
-						//if (reqCode==1 || reqCode==5 || reqCode==6 || reqCode == 7)//TEST
 						if (reqCode!=0)	{
 							byte [] guessArr = new byte[req.remaining()];
 							req.get(guessArr);
@@ -161,11 +160,6 @@ public class WordleServer {
 						WordleTask task = new WordleTask(chWithRequest, reqCode, opArg);
 						exec.submit(task);
 					}
-					// Altrimenti richiesta non valida -> chiudo connessione
-					// else
-					//while(!req.hasRemaining()) {
-					//	if (bytesRead==-1) {//TO-DO: handle close};
-					//}
 				}
 				iter.remove();
 			}
@@ -196,8 +190,29 @@ public class WordleServer {
 			// Salvo timestamp dell'estrazione
 			wordExtraction = new Timestamp(System.currentTimeMillis());
 			System.out.println(word);	// TEST
-
+			// Ottengo traduzione della parola
+			getTranslation();
 		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+
+	// Ottiene e salva la traduzione della parola corrente
+	private void getTranslation () {
+		try {
+			// Mi connetto al servizio
+			URL url = new URL("https://api.mymemory.translated.net/get?q="+word+"!&langpair=en|it");
+			HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+			connection.setRequestMethod("GET");
+            BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+			// Estraggo il field della traduzione
+            String response = in.readLine();
+            String [] resFields = response.split("\"");
+            translation = resFields[5];
+            connection.disconnect();
+			//System.out.println(response); // TEST
+            System.out.println(translation); // TEST
+        } catch (IOException e) {
 			e.printStackTrace();
 		}
 	}
@@ -210,13 +225,14 @@ public class WordleServer {
 			List <String> lines = Files.readAllLines(p, StandardCharsets.UTF_8);
 			// Se config non aveva questi parametri : Append
 			if (lines.size()<=4) {
-				String toAppend = String.format("%s\n%s", word, Long.toString(wordExtraction.getTime()));
+				String toAppend = String.format("%s\n%s\n%s", word, Long.toString(wordExtraction.getTime()),translation);
 				Files.write(p, toAppend.getBytes(), StandardOpenOption.APPEND);
 			}
 			// Se già ne aveva dall'avvio precedente li sostituisco
 			else {
 				lines.set(4, word);
 				lines.set(5, Long.toString(wordExtraction.getTime()));
+				lines.set(6, translation);
 				Files.write(p, lines, StandardCharsets.UTF_8);
 			}
 			// Serializzo database
@@ -244,18 +260,13 @@ public class WordleServer {
 
 			// Switch per controllare quale operazione deve essere eseguita
 			switch (op) {
-				case 0:
-					// TO-DO: Show
-					break;
 				//Ricevo guess e invio hint a user
 				case 1:
 					play();
 					break;
+				// Invio traduzione per la parola
 				case 2:
-					//TO-DO: Word
-					break;
-				case 3:
-					//TO-DO: Stats
+					sendTranslation();
 					break;
 				case 4:
 					shareUserMatch();
@@ -366,7 +377,6 @@ public class WordleServer {
 					if (userRank.get(i).score < newScore) modified = true;
 			}
 			else modified = true;
-			// IGNORES FIRST SERVER START
 			// Aggiorno ranking
 			if (oldScore == 0) {
 				userRank.add(new RankingEntry(username,newScore));}
@@ -382,6 +392,7 @@ public class WordleServer {
 				} catch (RemoteException e) {
 					e.printStackTrace();
 				}
+				sendAck(0);
 		}
 
 		// Gestisce gioco per un client
@@ -438,6 +449,25 @@ public class WordleServer {
 			}
 			System.out.println(String.valueOf(hint));	//TEST
 			return hint;	
+		}
+
+		// Invia parola e traduzione
+		private void sendTranslation () {
+			// Controllo che il client abbia effettivamente concluso la partita
+			boolean concluded = false;
+			Database usersDB = Database.getDB();
+			String lastWordGuess = usersDB.getLastPlayed(parameter);
+			if (word.equals(lastWordGuess)) concluded = true;
+			String toSend;
+			// Invio la coppia parola/traduzione o un warnings
+			if (concluded) toSend = word+" "+translation;
+			else toSend = "Not concluded";
+			ByteBuffer out = ByteBuffer.wrap(toSend.getBytes());
+			try {
+				client.write(out);
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
 		}
 
 		// Condivido su gruppo multicast l'esito dell'ultima partita dello user
