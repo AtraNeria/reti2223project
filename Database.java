@@ -88,7 +88,6 @@ public class Database {
 		int ex = 0;
 		UserEntry loginAttempt = usersDB.get(username);
 		if (loginAttempt==null) ex = 2;
-		//TO-DO: custom exceptions
 		else if (!Arrays.equals(password, loginAttempt.password)) ex = 1;
 		return ex;
     }

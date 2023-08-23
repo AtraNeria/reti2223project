@@ -49,6 +49,7 @@ public class WordleClient {
 		System.out.println(host);	// TEST
 		// login non ancora effettuato
 		login = new AtomicBoolean();
+		login.set(false);
 	}
 
 	// Configurazione
@@ -72,7 +73,7 @@ public class WordleClient {
 	public void greet() {
 		boolean exit = false;
 		int op;
-		// Creo shutdown hook
+		// Creo shutdown hook //TEST
 		Thread sdHook = new Thread(()-> shutdown());
 		Runtime.getRuntime().addShutdownHook(sdHook);
 
@@ -127,6 +128,7 @@ public class WordleClient {
 					case 9:
 						if (login.get()) logout();
 						exit = true;
+						System.out.println("Getting out"); //TEST
 						break;
 					default:
 						System.out.println("Richiesta non supportata!");
@@ -135,7 +137,6 @@ public class WordleClient {
 			}
 			catch (NumberFormatException e) {System.out.println("Richiesta non supportata!");}
 		}
-		System.exit(0);
 	}
 	
 	// Chiede username e password e controlla che siano corrette, altrimenti segnala errore
@@ -561,8 +562,11 @@ public class WordleClient {
 			out = ByteBuffer.wrap(toSend.getBytes());
 			clientSocket.write(out);
 			clientSocket.close();
+			System.out.println("Closing"); //TEST
 			udpListen.join(15000);
+			System.out.println("UDP close"); //TEST
 			callbackWait.join(15000);
+			System.out.println("Callback close"); //TEST
 		} catch (IOException | InterruptedException e) {
 			e.printStackTrace();
 		}
@@ -571,7 +575,7 @@ public class WordleClient {
 	// Chiusura del client in caso di sig
 	private void shutdown () {
 		if (login.get()) logout();
-		System.exit(0);
+		System.exit(1);
 	}
 
 	// Classe interna per gestire gruppo broadcast UDP
