@@ -268,6 +268,7 @@ public class WordleServer {
 				case 2:
 					sendTranslation();
 					break;
+				// Condivido esito dell'ultima partita di un utente
 				case 4:
 					shareUserMatch();
 					break;

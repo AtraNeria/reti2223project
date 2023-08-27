@@ -33,7 +33,12 @@ public class RemoteWordleServer extends java.rmi.server.UnicastRemoteObject impl
 	// Registrazione di un client per il callback
 	public void registerForCallback (ClientRemoteInterface clientIn) throws RemoteException {
 		// Registro client se non compare già tra i client registrati
-		if (!clients.contains(clientIn)) clients.add(clientIn);
+		if (!clients.contains(clientIn)) {
+			clients.add(clientIn);
+			// Invio classifica attuale
+			ClientRemoteInterface ci = (ClientRemoteInterface) clientIn;
+			ci.rankingUpdate(top3);
+		}
 	}
 
 	// Rimozione di client da lista per callback

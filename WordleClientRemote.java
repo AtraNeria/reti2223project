@@ -13,7 +13,7 @@ public class WordleClientRemote extends RemoteObject implements ClientRemoteInte
     }
 
     // Metodo che server può richiamare per notificare cambiamenti nella classifica
-    public void rankingUpdate (List<RankingEntry> top3) throws RemoteException {
+    public synchronized void rankingUpdate (List<RankingEntry> top3) throws RemoteException {
         leaderboard.clear();
         leaderboard.addAll(top3);
     }

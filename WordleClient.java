@@ -73,10 +73,9 @@ public class WordleClient {
 	public void greet() {
 		boolean exit = false;
 		int op;
-		// Creo shutdown hook //TEST
+		// Creo shutdown hook
 		Thread sdHook = new Thread(()-> shutdown());
 		Runtime.getRuntime().addShutdownHook(sdHook);
-
 		while (!exit){
 			String ans = c.readLine("Ciao! Scrivi:\n1 -Login\n2 -Signup\n3 -Play\n4 -Condividi risultato ultima partita\n5 -Mostrami le mie statistiche\n6 -Mostrami le notifiche ricevute\n7 -Mostrami la classifica\n8 -Logout\n9 -close\n");
 			try	{
@@ -128,7 +127,6 @@ public class WordleClient {
 					case 9:
 						if (login.get()) logout();
 						exit = true;
-						System.out.println("Getting out"); //TEST
 						break;
 					default:
 						System.out.println("Richiesta non supportata!");
@@ -503,18 +501,19 @@ public class WordleClient {
 	}
 
 	// Stampo le notifiche ricevute dal gruppo di multicast
-	private void printNotifs(){
+	private synchronized void printNotifs(){
 		System.out.println("Hai ricevuto "+notifs.size()+" notifiche");
-		for (int i=0; i<notifs.size();i++) {
-			System.out.println(notifs.get(i));
-			notifs.remove(i);
+		while (!notifs.isEmpty()) {
+			System.out.println(notifs.get(0));
+			notifs.remove(0);
 		}
 	}
 
 	// Stampo la top3
-	private void printLeaderboard () {
+	private synchronized void printLeaderboard () {
 		int s = leaderboard.size();
-		for (int i=0; i<s; i++) {
+		if (s==0) System.out.println("La top 3 è ancora vuota!");
+		else for (int i=0; i<s; i++) {
 			System.out.println(i+") "+leaderboard.get(i).username+" : "+leaderboard.get(i).score);
 		}
 	}
@@ -533,7 +532,7 @@ public class WordleClient {
 			// Stampo le statistiche formattate
 			String stats = StandardCharsets.UTF_8.decode(in).toString();
 			String [] st = stats.split(" ");
-			System.out.println("Score: "+st[0]+"\nPartite vinte: "+st[1]+"\nPartite vinte: "+st[2]+"\nNumero medio di tentativi per vincere: "+st[3]);
+			System.out.println("Score: "+st[0]+"\nPartite vinte: "+st[1]+"\nPartite giocate: "+st[2]+"\nNumero medio di tentativi per vincere: "+st[3]);
 		}
 		catch (IOException e) {
 			e.printStackTrace();
@@ -562,11 +561,8 @@ public class WordleClient {
 			out = ByteBuffer.wrap(toSend.getBytes());
 			clientSocket.write(out);
 			clientSocket.close();
-			System.out.println("Closing"); //TEST
-			udpListen.join(15000);
-			System.out.println("UDP close"); //TEST
-			callbackWait.join(15000);
-			System.out.println("Callback close"); //TEST
+			udpListen.join();
+			callbackWait.join();
 		} catch (IOException | InterruptedException e) {
 			e.printStackTrace();
 		}
@@ -575,7 +571,6 @@ public class WordleClient {
 	// Chiusura del client in caso di sig
 	private void shutdown () {
 		if (login.get()) logout();
-		System.exit(1);
 	}
 
 	// Classe interna per gestire gruppo broadcast UDP
@@ -602,17 +597,21 @@ public class WordleClient {
 						DatagramPacket pkg = new DatagramPacket(buf, buf.length);
 						socket.receive(pkg);
 						String received = new String(pkg.getData(), 0, pkg.getLength());
-						notifs.add(received);
+						addNotif(received);
 					}
 					catch (SocketTimeoutException e) {continue;}
 				}
 				socket.leaveGroup(group);
+				socket.close();
 				notifs.clear();
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
 		}
 
+		private synchronized void addNotif(String n) {
+			notifs.add(n);
+		}
 
 
 	}
@@ -636,6 +635,7 @@ public class WordleClient {
 				rmi.registerForCallback(stub);
 				while (logged.get()) { continue; }
 				rmi.unregisterForCallback(stub);
+				UnicastRemoteObject.unexportObject(callback, true);
 			} catch (RemoteException e) {
 				e.printStackTrace();
 			}

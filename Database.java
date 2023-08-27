@@ -133,8 +133,10 @@ public class Database {
     // Aggiorna punteggio di username dopo che ha indovinato in tries tentativi
     public void updateScore (String username, int tries) {
         UserEntry toUpdate = usersDB.get(username);
-        toUpdate.totTries+=tries;
+        // Aggiorno tentativi totali e partite vinte
+        toUpdate.totTries=toUpdate.totTries+tries;
         toUpdate.gamesWon++;
+        // Score = Match vinti / Numero medio di tentativi impiegati
         toUpdate.score = toUpdate.gamesWon / (toUpdate.totTries/toUpdate.gamesWon);
     }
 
@@ -151,8 +153,12 @@ public class Database {
     public String getLastMatchResult (String username) {
         UserEntry user = usersDB.get(username);
         String lastMatch;
+        // Se ha vinto
         if (user.lastPlayedWon) lastMatch = username+" ha vinto la sua ultima partita!";
-        else lastMatch = username+" ha vinto la sua ultima partita!";
+        // Se ha perso
+        else if (user.totGamesPlayed!=0) lastMatch = username+" ha perso la sua ultima partita!";
+        // Se non ha ancora mai giocato
+        else lastMatch = username+" deve ancora giocare la sua prima partita!";
         return lastMatch;
     }
 
