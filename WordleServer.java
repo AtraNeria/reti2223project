@@ -96,9 +96,7 @@ public class WordleServer {
 		multicastGroup = InetAddress.getByName("225.0.0.0");
 		// Creo la socket di ascolto passiva e la collego
 		welcomeSocket = ServerSocketChannel.open();
-		InetSocketAddress addr = new InetSocketAddress("localhost", port); // TEST
 		welcomeSocket.bind(new InetSocketAddress("localhost", port));
-		System.out.println(addr);	// TEST
 		welcomeSocket.configureBlocking(false);
 		// Istanzio il selector
 		selector = Selector.open();
@@ -123,7 +121,6 @@ public class WordleServer {
 				// Se un client richiede connessione
 				if(currKey.isAcceptable()) {
 					acceptConnection(selector, welcomeSocket);
-					System.out.println("Got connected"); // TEST
 				}
 				
 				// Se un client ha richiesta
@@ -141,7 +138,6 @@ public class WordleServer {
 						byte [] code = new byte[1];
 						req.get(code,0,1);
 						reqCode = Integer.parseInt(new String(code,StandardCharsets.UTF_8));
-						System.out.println(reqCode); // TEST
 						if (reqCode!=0)	{
 							byte [] guessArr = new byte[req.remaining()];
 							req.get(guessArr);
@@ -152,7 +148,6 @@ public class WordleServer {
 					if (reqCode==0 || bytesRead==-1) {
 						currKey.cancel();
 						currKey.channel().close();
-						System.out.println("Socket closed");  //TEST
 					}
 
 					// Passo a thread worker
@@ -189,7 +184,6 @@ public class WordleServer {
 			word = Files.readAllLines(vocab).get(chosenLine);
 			// Salvo timestamp dell'estrazione
 			wordExtraction = new Timestamp(System.currentTimeMillis());
-			System.out.println(word);	// TEST
 			// Ottengo traduzione della parola
 			getTranslation();
 		} catch (IOException e) {
@@ -201,17 +195,16 @@ public class WordleServer {
 	private void getTranslation () {
 		try {
 			// Mi connetto al servizio
-			URL url = new URL("https://api.mymemory.translated.net/get?q="+word+"!&langpair=en|it");
+			URL url = new URL("https://api.mymemory.translated.net/get?q="+word+"&langpair=en|it");
 			HttpURLConnection connection = (HttpURLConnection) url.openConnection();
 			connection.setRequestMethod("GET");
             BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()));
 			// Estraggo il field della traduzione
             String response = in.readLine();
-            String [] resFields = response.split("\"");
-            translation = resFields[5];
+			String before = "\"translatedText\":\"";
+			String after = "\",\"match";
+            translation = response.substring(response.indexOf(before)+before.length(), response.indexOf(after));
             connection.disconnect();
-			//System.out.println(response); // TEST
-            System.out.println(translation); // TEST
         } catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -330,10 +323,8 @@ public class WordleServer {
 			// Chiedo al DB se l'utente ha già dei tentativi per la parola attuale
 			Database usersDB = Database.getDB();
 			int triesMade = usersDB.hasPending(parameter, word);
-			if(triesMade!=-1) System.out.println(usersDB.getAttemptString(parameter)); //TEST
 			// Invio a utente la risposta
 			ByteBuffer out = ByteBuffer.allocate(4);
-			System.out.println("Already tried "+triesMade+" times"); //TEST
 			out.putInt(triesMade);
 			out.flip();
 			try {
@@ -448,7 +439,6 @@ public class WordleServer {
 					}
 				}
 			}
-			System.out.println(String.valueOf(hint));	//TEST
 			return hint;	
 		}
 

@@ -46,8 +46,7 @@ public class WordleClient {
 		// Configurazione per numero di porta
 		this.getConfig();
 		host = new InetSocketAddress("localhost", port);
-		System.out.println(host);	// TEST
-		// login non ancora effettuato
+		// Login non ancora effettuato
 		login = new AtomicBoolean();
 		login.set(false);
 	}
@@ -140,19 +139,36 @@ public class WordleClient {
 	// Chiede username e password e controlla che siano corrette, altrimenti segnala errore
 	// Restituisce true se l'operazione ha avuto successo, false altrimenti
 	private boolean getLogin() {
-		// Leggo Username
+
 		String name = c.readLine("Username: ");
-		// Massimo 12 char
-		if (name.length()> 12) {
-			System.out.println("Username troppo lungo! Deve essere massimo 12 caratteri.");
-			return false;
-		}
-		// Leggo password
 		char[] password = c.readPassword("Password: ");
-		// Massimo 24 char
-		if (password.length > 24) {
-			System.out.println("Password troppo lunga! Deve essere massimo 24 caratteri.");
-			return false;
+		boolean valid = false;
+
+		// Richiedo credenziali fino a che user non ne fornisce di valide
+		while (!valid) {
+			// Controllo lunghezza nome
+			if (name.length()> 12) {
+				System.out.println("Username troppo lungo! Deve essere massimo 12 caratteri.");
+			}
+			else if (name.length()==0) {
+				System.out.println("Username vuoto.");
+			}
+			// Nome non può contenere uno spazio
+			else if (name.contains(" ")) {
+				System.out.println("Lo username non può contenere uno spazio.");
+			}
+			// Controllo lunghezza password
+			else if (password.length == 0) {
+				System.out.println("Password vuota.");
+			}
+			else if (password.length > 24) {
+				System.out.println("Password troppo lunga! Deve essere massimo 24 caratteri.");
+			}
+			else valid = true;
+			if (!valid) {
+				name = c.readLine("Username: ");
+				password = c.readPassword("Password: ");
+			}
 		}
 
 		// Credenziali valide -> Procedura di login
@@ -241,7 +257,7 @@ public class WordleClient {
 	
 	// Mi registro per ottenere dal server aggiornamenti sul ranking
 	private void getLeaderboardUpdates (RemoteServerInterface remoteServer) {
-		waitForCallback getTop3 = new waitForCallback(remoteServer, login);
+		WaitForCallback getTop3 = new WaitForCallback(remoteServer, login);
 		callbackWait = new Thread(getTop3);
 		callbackWait.start();
 	}
@@ -461,7 +477,7 @@ public class WordleClient {
 		if (toPrint.equals("Not concluded")) System.out.println("Errore, partita non conclusa!");
 		else {
 			String [] couple = toPrint.split(" ");
-			if (couple[1].contains("!")) System.out.println("Non è stato possibile trovare una traduzione per la parola \""+couple[0]+"\"");
+			if (couple[1].equals(couple[0])) System.out.println("Non è stato possibile trovare una traduzione per la parola \""+couple[0]+"\"");
 			else System.out.println("Parola: "+couple[0]+"\nTraduzione: "+couple[1]);
 		}
 	}
@@ -617,12 +633,12 @@ public class WordleClient {
 	}
 
 	// Classe interna per gestire notifiche callback
-	private class waitForCallback implements Runnable {
+	private class WaitForCallback implements Runnable {
 
 		RemoteServerInterface rmi;
 		AtomicBoolean logged;
 		
-		public waitForCallback (RemoteServerInterface remoteServer, AtomicBoolean login) {
+		public WaitForCallback (RemoteServerInterface remoteServer, AtomicBoolean login) {
 			logged = login;
 			rmi = remoteServer;
 		}
