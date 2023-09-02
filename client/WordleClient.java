@@ -496,7 +496,7 @@ public class WordleClient {
 			out = ByteBuffer.wrap(toSend.getBytes());
 			clientSocket.write(out);
 			// Leggo e restituisco la risposta
-			in = ByteBuffer.allocate(22);
+			in = ByteBuffer.allocate(64);
 			clientSocket.read(in);
 			in.flip();
 			String wordTranslation = StandardCharsets.UTF_8.decode(in).toString();

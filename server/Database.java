@@ -3,6 +3,7 @@ package server;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -28,14 +29,14 @@ public class Database {
         usersDB = new ConcurrentHashMap <String,UserEntry>();
 
 		// GSon + reflection per deserializzare il db
-		Gson gson = new Gson();
-		TypeToken<ConcurrentHashMap<String, UserEntry>> dbType = new TypeToken<ConcurrentHashMap<String, UserEntry>>(){};
 		Path dbFilePath = FileSystems.getDefault().getPath("server/users.json");
 		File f = new File("server/users.json");
 		try {
 			// Se esiste già un database
 			if (f.exists()){
-				String jsonS = Files.readString(dbFilePath);
+                Gson gson = new Gson();
+                Type dbType = new TypeToken<ConcurrentHashMap<String, UserEntry>>(){}.getType(); 
+                String jsonS = Files.readString(dbFilePath);
 				usersDB = gson.fromJson(jsonS, dbType);
 			}
 		}
@@ -179,8 +180,6 @@ public class Database {
         return ranks;
     }
 
-    
-
     // Classe interna per dati utente
     private class UserEntry {
 
@@ -218,7 +217,6 @@ public class Database {
             else return -1;
         }        
     }
-
 
     // Classe per i dati legati ad una sessione di gioco lasciata incompleta di un utente
     private class MatchSession {
@@ -270,12 +268,12 @@ public class Database {
             private class Attempt {
                 String word;
                 String hint;
-    
+
                 public Attempt(String w, String h) {
                     word = w;
                     hint = h;
                 }
-    
+
             }
     
     }
