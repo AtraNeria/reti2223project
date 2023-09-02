@@ -174,9 +174,9 @@ public class WordleServer {
 	// Estraggo una parola da word.txt
 	private void extractWord(){
 		try {
-			Path vocab = Paths.get("server/words.txt");
+			Path vocab = Paths.get("words.txt");
 			// Conto numero di parole disponibili
-			BufferedReader counter = new BufferedReader(new FileReader("server/words.txt"));
+			BufferedReader counter = new BufferedReader(new FileReader("words.txt"));
 			int lines = 0;
 			while (counter.readLine()!=null) lines++;
 			counter.close();
@@ -480,7 +480,7 @@ public class WordleServer {
 		// Controlla se un tentativo di un utente è presente nel vocabolario
 		private boolean isInVocab (String guess) {
 			boolean ans = false;
-			try {ans = Files.lines(Paths.get("server/words.txt")).anyMatch(l -> l.contains(guess));
+			try {ans = Files.lines(Paths.get("words.txt")).anyMatch(l -> l.contains(guess));
 			}
 			catch (IOException e) {
 				e.printStackTrace();

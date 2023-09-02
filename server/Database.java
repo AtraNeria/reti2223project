@@ -143,11 +143,13 @@ public class Database {
     }
 
     // Restituisce una stringa che contiene le seguenti informazioni su username:
-    // il punteggio, il numero di partite vinti, il numero di partite totali, il numero medio di tentativi impiegati per vincere
+    // il punteggio, il numero di partite vinte, il numero di partite totali, il numero medio di tentativi impiegati per vincere
     // Le informazioni avranno come divisore uno spazio l'una dall'altra
     public String getUserStats (String username) {
         UserEntry user = usersDB.get(username);
-        String stats = user.score +" "+user.gamesWon+" "+user.totGamesPlayed+" "+(user.totTries/user.gamesWon);
+        String stats;
+        if (user.lastPlayed == null) stats ="0 0 0 0";
+        else stats = user.score +" "+user.gamesWon+" "+user.totGamesPlayed+" "+(user.totTries/user.gamesWon);
         return stats;
     }
 
